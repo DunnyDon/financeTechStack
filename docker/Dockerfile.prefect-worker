@@ -1,0 +1,27 @@
+# Dockerfile for Prefect Worker with custom configuration
+FROM prefecthq/prefect:3-latest
+
+WORKDIR /app
+
+# Install additional dependencies if needed
+RUN pip install --no-cache-dir \
+    requests \
+    pandas \
+    pyarrow \
+    beautifulsoup4 \
+    lxml
+
+# Copy application code
+COPY src/ ./src/
+COPY pyproject.toml ./
+
+# Set environment
+ENV PREFECT_HOME=/root/.prefect \
+    PREFECT_WORKER_PROCESS_POLL_INTERVAL=5
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import prefect; print('OK')" || exit 1
+
+# Default: start worker
+CMD ["prefect", "worker", "start", "-p", "default-agent-pool"]

@@ -1,0 +1,122 @@
+services:
+  # PostgreSQL database for Prefect and data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: techstack-postgres
+    environment:
+      POSTGRES_DB: techstack
+      POSTGRES_USER: techstack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-techstack-dev-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U techstack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - techstack-network
+
+  # Prefect Server
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: techstack-prefect-server
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://techstack:${POSTGRES_PASSWORD:-techstack-dev-password}@postgres:5432/techstack
+      PREFECT_API_URL: http://localhost:4200/api
+      PREFECT_UI_URL: http://localhost:4200
+    ports:
+      - "4200:4200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:4200/api/health\", timeout=5)' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - techstack-network
+    volumes:
+      - prefect_data:/root/.prefect
+
+  # Prefect Worker
+  prefect-worker:
+    image: prefecthq/prefect:3-latest
+    container_name: techstack-prefect-worker
+    command: prefect worker start -p default-agent-pool
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_WORKER_PROCESS_POLL_INTERVAL: 5
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - techstack-network
+    deploy:
+      replicas: 1
+
+  # Finance TechStack Application
+  techstack:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: techstack-app
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./config.csv:/app/config.csv
+      - ./db:/app/db
+      - ./.prefect:/app/.prefect
+    ports:
+      - "8000:8000"
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - techstack-network
+    # Override command to run the application
+    command: python src/main.py
+    # Alternative: run tests
+    # command: python -m pytest tests/ -v
+    # Alternative: interactive shell
+    # stdin_open: true
+    # tty: true
+    # command: /bin/bash
+
+  # Optional: Redis cache (for caching CIK lookups)
+  redis:
+    image: redis:7-alpine
+    container_name: techstack-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - techstack-network
+    command: redis-server --appendonly yes
+
+networks:
+  techstack-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  prefect_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -1,0 +1,71 @@
+# .dockerignore - Exclude files from Docker build context
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+*.pyc
+.venv
+.env.local
+
+# Python cache and testing
+__pycache__
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.tox
+htmlcov
+.coverage
+coverage.xml
+test-results
+test_results.json
+
+# Build and distribution
+build
+dist
+*.whl
+*.tar.gz
+
+# Documentation
+docs
+*.md
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.~*
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Node modules (if any)
+node_modules
+npm-debug.log

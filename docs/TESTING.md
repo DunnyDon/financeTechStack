@@ -152,6 +152,150 @@ uv run --with pytest python -m pytest tests/ -s
 uv run --with pytest python -m pytest tests/ -n auto
 ```
 
+## Docker & Containerized Testing
+
+### Run Tests in Docker
+
+All tests can be executed in a containerized environment to ensure consistency across machines.
+
+```bash
+# Build the Docker image
+docker build -t finance-techstack:latest .
+
+# Run unit tests in Docker
+docker run --rm finance-techstack:latest python -m pytest tests/test_sec_scraper.py -v
+
+# Run XBRL tests in Docker
+docker run --rm finance-techstack:latest python -m pytest tests/test_xbrl.py -v
+
+# Run all tests in Docker
+docker run --rm finance-techstack:latest python -m pytest tests/ -v
+```
+
+### Docker Compose Testing
+
+For testing with full service stack (PostgreSQL, Prefect, Redis):
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Run tests against services
+docker-compose run --rm techstack python -m pytest tests/ -v
+
+# Check service health
+docker-compose ps
+
+# View logs from any service
+docker-compose logs prefect-server
+docker-compose logs postgres
+
+# Tear down all services
+docker-compose down
+
+# Clean up volumes
+docker-compose down -v
+```
+
+### Docker Testing with Coverage
+
+```bash
+# Generate coverage report in Docker
+docker run --rm -v $(pwd):/app finance-techstack:latest \
+  python -m pytest tests/ --cov=src --cov-report=html
+
+# View coverage report locally
+open htmlcov/index.html
+```
+
+### Automated Docker Test Script
+
+A comprehensive test script handles multi-phase testing:
+
+```bash
+# Make script executable
+chmod +x scripts/docker-test.sh
+
+# Run all Docker tests
+./scripts/docker-test.sh
+
+# Tests performed:
+# - Single container image build
+# - Unit test execution
+# - Docker Compose service startup
+# - Service health checks
+# - Integration test execution
+# - Data persistence validation
+# - Service teardown and cleanup
+```
+
+### Docker Testing Benefits
+
+- ✓ **Consistency**: Same environment as production
+- ✓ **Isolation**: Tests don't affect local machine
+- ✓ **CI/CD Ready**: Exact reproduction in pipelines
+- ✓ **Multi-service Testing**: Full stack validation
+- ✓ **Clean State**: Start fresh for each run
+- ✓ **Dependency Testing**: Verify all service interactions
+
+### Example: Full Test Lifecycle in Docker
+
+```bash
+# 1. Build fresh image
+docker build -t finance-techstack:test .
+
+# 2. Start services
+docker-compose up -d
+
+# 3. Wait for health checks
+sleep 10
+docker-compose ps
+
+# 4. Run tests
+docker-compose run --rm techstack python -m pytest tests/ -v
+
+# 5. Run Prefect integration tests
+docker-compose run --rm techstack python tests/test_integration.py
+
+# 6. Verify data persistence
+docker-compose exec postgres psql -U techstack -d techstack -c \
+  "SELECT * FROM information_schema.tables WHERE table_schema='public';"
+
+# 7. Clean up
+docker-compose down
+```
+
+### Troubleshooting Docker Tests
+
+**Image build fails:**
+```bash
+docker build -t finance-techstack:latest . --no-cache
+```
+
+**Services won't start:**
+```bash
+# Check logs
+docker-compose logs -f
+
+# Verify ports aren't in use
+lsof -i :5432  # PostgreSQL
+lsof -i :4200  # Prefect
+lsof -i :6379  # Redis
+```
+
+**Tests hang in Docker:**
+```bash
+# Increase timeout
+docker run --rm --timeout=300 finance-techstack:latest \
+  python -m pytest tests/ -v
+```
+
+**Cleanup stuck containers:**
+```bash
+docker-compose down -v --remove-orphans
+docker system prune -a
+```
+
 ## Test Results
 
 ### Expected Output

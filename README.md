@@ -13,6 +13,9 @@ A production-ready Python application that integrates SEC EDGAR filings, XBRL fu
 - **Comprehensive testing**: 33+ unit and integration tests with Prefect support
 - **Rate limiting**: Built-in delays to respect SEC API rate limits
 - **Advanced logging**: Prefect integration with detailed task-level logging
+- **Docker containerization**: Full multi-stage build, docker-compose orchestration, cloud-ready
+- **Scalable architecture**: Ready for Dask/Coiled for distributed batch processing
+- **Multi-cloud deployment**: AWS ECS, Kubernetes, and other cloud platforms supported
 
 ## Quick Start
 
@@ -249,6 +252,49 @@ uv run python -m prefect flow-run ls
 uv run python -m prefect flow-run inspect <run-id>
 ```
 
+## Docker & Cloud Deployment
+
+The project is fully containerized and ready for cloud deployment.
+
+### Quick Docker Start
+
+```bash
+# Start all services (PostgreSQL, Prefect Server, Worker, App)
+docker-compose up -d
+
+# View running services
+docker-compose ps
+
+# Run tests in Docker
+docker-compose run --rm techstack python -m pytest tests/ -v
+
+# Monitor logs
+docker-compose logs -f techstack
+```
+
+### Deployment Options
+
+- **Docker Compose**: Local development with all services (PostgreSQL, Prefect, Redis)
+- **AWS ECS**: Fargate deployment with Terraform IaC
+- **Kubernetes**: Multi-cloud K8s deployment with auto-scaling
+- **GCP/Azure/DigitalOcean**: Container-ready deployment
+
+See [DOCKER.md](DOCKER.md) for comprehensive deployment guide.
+
+### Scaling with Dask/Coiled
+
+For batch processing of thousands of companies:
+
+```bash
+# Option 1: Local Dask cluster (add to docker-compose.yml)
+# Process using distributed workers on your infrastructure
+
+# Option 2: Coiled (managed Dask on AWS)
+# Auto-scaling clusters, cost optimization, fully managed
+```
+
+See [DOCKER.md - Scaling with Dask and Coiled](DOCKER.md#scaling-with-dask-and-coiled) for details.
+
 ## Architecture
 
 ### Prefect Tasks
@@ -366,9 +412,42 @@ uv run python -m ruff check src/
 
 MIT
 
+## Documentation
+
+Complete documentation is available in the following guides:
+
+| Document | Purpose |
+|----------|---------|
+| [DOCKER.md](DOCKER.md) | Docker containerization, cloud deployment (AWS, K8s, etc.) |
+| [docs/TESTING.md](docs/TESTING.md) | Comprehensive testing guide (unit, integration, Docker) |
+| [docs/DASK_COILED_RECOMMENDATIONS.md](docs/DASK_COILED_RECOMMENDATIONS.md) | Strategic guide on scaling with Dask/Coiled |
+| [docs/DASK_COILED_QUICK_REFERENCE.md](docs/DASK_COILED_QUICK_REFERENCE.md) | Quick reference for Dask/Coiled decisions |
+| [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) | Pre-deployment verification checklist |
+
+## Scaling & Performance
+
+### Current Performance
+
+- Single ticker: ~18 seconds
+- Three tickers: ~25 seconds  
+- 1000 companies (sequential): ~16+ minutes
+- Bottleneck: SEC API rate limit (1 request/second)
+
+### Scaling Options
+
+For larger workloads, see [docs/DASK_COILED_RECOMMENDATIONS.md](docs/DASK_COILED_RECOMMENDATIONS.md):
+
+- **Phase 1 (Recommended)**: Optimization + Alpha Vantage upgrade = 3-5x improvement ($30/month)
+- **Phase 2 (If needed)**: Local Dask cluster = 4-10x improvement ($50-200/month infrastructure)
+- **Phase 3 (Enterprise)**: Coiled managed service = 10-50x improvement ($300-400/month)
+
+**Current recommendation**: Implement Phase 1 optimization before considering distributed computing.
+
 ## Support
 
 For issues or questions:
-1. Check the [Testing Guide](TESTING.md)
-2. Review [Development Instructions](.github/copilot-instructions.md)
-3. Check Prefect logs for detailed error messages
+1. Check the [Testing Guide](docs/TESTING.md)
+2. Review [Deployment Checklist](DEPLOYMENT_CHECKLIST.md)
+3. Read [Dask/Coiled Quick Reference](docs/DASK_COILED_QUICK_REFERENCE.md) for scaling questions
+4. Review [Development Instructions](.github/copilot-instructions.md)
+5. Check Prefect logs for detailed error messages

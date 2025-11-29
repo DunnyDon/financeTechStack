@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: techstack-app
+  namespace: default
+  labels:
+    app: techstack
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: techstack
+  template:
+    metadata:
+      labels:
+        app: techstack
+    spec:
+      containers:
+      - name: techstack
+        image: your-registry.azurecr.io/finance-techstack:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: app
+        env:
+        - name: PREFECT_API_URL
+          value: "http://prefect-server:4200/api"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: ALPHA_VANTAGE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: techstack-secrets
+              key: alpha-vantage-api-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; from src.main import aggregate_financial_data; print('OK')"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; from src.main import aggregate_financial_data; print('OK')"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: config
+          mountPath: /app/config.csv
+          subPath: config.csv
+        - name: data
+          mountPath: /app/db
+      volumes:
+      - name: config
+        configMap:
+          name: techstack-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: techstack-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: techstack-service
+  labels:
+    app: techstack
+spec:
+  type: LoadBalancer
+  selector:
+    app: techstack
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: techstack-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: techstack-config
+data:
+  config.csv: |
+    API_KEY,VALUE
+    ALPHA_VANTAGE_API_KEY,your_key_here
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: techstack-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: techstack-app
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
