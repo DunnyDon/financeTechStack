@@ -23,12 +23,75 @@ SEC_FILINGS_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
 # Alpha Vantage API endpoint
 ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
 
+# User-Agent rotation to avoid blocking
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+]
+
+_ua_index = 0
+
+def get_next_user_agent() -> str:
+    """Rotate through user agents."""
+    global _ua_index
+    ua = USER_AGENTS[_ua_index % len(USER_AGENTS)]
+    _ua_index += 1
+    return ua
+
+
+def make_sec_request(url: str, max_retries: int = 5, delay: float = 2.0) -> Optional[dict]:
+    """
+    Make a request to SEC API with exponential backoff and user-agent rotation.
+    
+    Args:
+        url: SEC API endpoint
+        max_retries: Maximum retry attempts
+        delay: Initial delay between retries (in seconds)
+        
+    Returns:
+        JSON response or None if failed
+    """
+    for attempt in range(max_retries):
+        try:
+            headers = {
+                "User-Agent": get_next_user_agent(),
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate",
+                "DNT": "1",
+            }
+            
+            response = requests.get(url, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 403:
+                # Exponential backoff on 403
+                wait_time = delay * (2 ** attempt)
+                print(f"  [Attempt {attempt + 1}] 403 Forbidden. Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                response.raise_for_status()
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = delay * (2 ** attempt)
+                print(f"  [Attempt {attempt + 1}] Error: {e}. Waiting {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"  [Final attempt] Failed after {max_retries} attempts")
+                return None
+    
+    return None
+
 
 @task(retries=3, retry_delay_seconds=5)
 def fetch_company_cik(ticker: str) -> Optional[str]:
     """
     Fetch the CIK (Central Index Key) for a company given its ticker symbol.
-    Uses SEC's official company tickers JSON file.
+    Uses SEC's official company tickers JSON file with exponential backoff.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL')
@@ -40,20 +103,14 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
     logger.info(f"Fetching CIK for ticker: {ticker}")
     
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        data = make_sec_request(SEC_COMPANY_TICKERS_URL, max_retries=5, delay=3.0)
         
-        # Fetch the official SEC company tickers JSON
-        response = requests.get(SEC_COMPANY_TICKERS_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        tickers_data = response.json()
+        if not data:
+            logger.error(f"Failed to fetch company tickers for {ticker}")
+            return None
         
         # Search for the ticker in the data
-        for entry in tickers_data.values():
+        for entry in data.values():
             if entry.get("ticker", "").upper() == ticker.upper():
                 cik = str(entry.get("cik_str", "")).zfill(10)
                 logger.info(f"Found CIK: {cik} for ticker: {ticker}")
@@ -70,7 +127,7 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
 @task(retries=3, retry_delay_seconds=5)
 def fetch_sec_filings(cik: str, filing_type: str = "10-K", limit: int = 10) -> list[dict]:
     """
-    Fetch SEC filings for a given CIK.
+    Fetch SEC filings for a given CIK with exponential backoff.
     
     Args:
         cik: Company's CIK number
@@ -85,15 +142,11 @@ def fetch_sec_filings(cik: str, filing_type: str = "10-K", limit: int = 10) -> l
     
     try:
         url = f"{SEC_BASE_URL}/CIK{cik}.json"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        data = make_sec_request(url, max_retries=5, delay=2.0)
         
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        if not data:
+            logger.error(f"Failed to fetch filings for CIK {cik}")
+            return []
         
         filings = []
         if "filings" in data and "recent" in data["filings"]:
