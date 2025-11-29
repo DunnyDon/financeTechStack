@@ -1,153 +1,374 @@
-# SEC Filings Scraper
+# Finance TechStack - SEC Filings & Financial Data Aggregation
 
-A Prefect-based Python script for scraping SEC (Securities and Exchange Commission) filings from EDGAR (Electronic Data Gathering, Organization, and Retrieval system).
+A production-ready Python application that integrates SEC EDGAR filings, XBRL fundamentals, and Alpha Vantage financial data using Prefect workflow orchestration. Efficiently process and store financial data in Apache Parquet format.
 
 ## Features
 
-- **Multi-company support**: Scrape filings for multiple stock tickers simultaneously
-- **Flexible filing types**: Support for 10-K, 10-Q, 8-K, and other SEC filing types
-- **Prefect workflows**: Organized flows with task-level error handling and retries
-- **Parquet data storage**: Efficient columnar data format with compression
-- **Comprehensive testing**: 22 unit tests with Prefect integration
+- **Multi-source financial data aggregation**: Combines SEC EDGAR, XBRL fundamentals, and Alpha Vantage data
+- **SEC EDGAR integration**: Automatic CIK lookup and filing retrieval for all SEC filing types
+- **XBRL parsing**: Extracts financial metrics from SEC submissions (10-K, 10-Q, etc.)
+- **Alpha Vantage integration**: Fetch fundamental and technical data (when API key configured)
+- **Prefect workflows**: Production-grade task orchestration with automatic retries and error handling
+- **Efficient data storage**: Apache Parquet format with Snappy compression
+- **Comprehensive testing**: 33+ unit and integration tests with Prefect support
 - **Rate limiting**: Built-in delays to respect SEC API rate limits
-- **Comprehensive logging**: Detailed Prefect logs for monitoring and debugging
+- **Advanced logging**: Prefect integration with detailed task-level logging
 
-## Installation
+## Quick Start
 
 ### Prerequisites
+
 - Python 3.13 or higher
-- pip or uv package manager
+- `uv` package manager (or `pip` + `venv`)
 
-### Setup
-
-1. Clone or navigate to this repository
-2. Install dependencies:
-   ```bash
-   # Using pip with virtual environment
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -e .
-   
-   # Or using uv
-   uv sync
-   ```
-
-## Usage
-
-### Basic Example
-
-Run the default scraper for Apple and Microsoft:
+### Installation
 
 ```bash
-uv run python main.py
+# Clone the repository
+cd /Users/conordonohue/Desktop/TechStack
+
+# Install dependencies with uv
+uv sync
+
+# Or with pip
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+### Run the Main Flow
+
+```bash
+# Run financial data aggregation for AAPL and MSFT
+uv run python src/main.py
 ```
 
 This will:
-1. Fetch CIK numbers for AAPL and MSFT
-2. Retrieve the latest 5 10-K filings
-3. Save filing metadata to `db/sec_filings_<timestamp>.parquet`
+1. Fetch CIK identifiers for the specified tickers
+2. Retrieve the latest SEC 10-K filing metadata
+3. Extract XBRL financial fundamentals
+4. Fetch Alpha Vantage data (if API key is configured)
+5. Merge all data sources into a unified record
+6. Save aggregated data to `db/financial_data_<timestamp>.parquet`
 
-### Custom Usage
+## Usage Examples
 
-Modify `main.py` to customize the scraper:
+### Run Prefect Flow Directly
 
 ```python
-# Scrape different companies
-filings = scrape_sec_filings(
-    tickers=["GOOGL", "AMZN", "TSLA"],
-    filing_type="10-Q",  # Quarterly reports
-    limit=10
+from src.main import aggregate_financial_data
+
+# Aggregate financial data for multiple companies
+result = aggregate_financial_data(
+    tickers=["AAPL", "MSFT", "GOOGL"],
+    filing_type="10-K",
+    include_alpha_vantage=True
 )
+
+print(f"Processed: {result['total_tickers']} tickers")
+print(f"Successful: {result['successful']}")
+print(f"Output file: {result['output_file']}")
 ```
 
-### Available Filing Types
-- `10-K`: Annual report
-- `10-Q`: Quarterly report
-- `8-K`: Current report
-- `S-1`: Registration statement
-- And many others
+### Fetch Individual Data Sources
+
+```python
+from src.main import fetch_company_cik, fetch_filing_metadata, fetch_xbrl_data
+from src.alpha_vantage import fetch_fundamental_data
+
+# Get company info and CIK
+company = fetch_company_cik("AAPL")
+cik = company["cik"]
+
+# Get latest 10-K filing
+filing = fetch_filing_metadata(cik, "10-K")
+
+# Get XBRL fundamentals
+xbrl = fetch_xbrl_data(cik, "AAPL")
+
+# Get Alpha Vantage data
+av_data = fetch_fundamental_data("AAPL")
+```
 
 ## Testing
 
-The project includes comprehensive testing with pytest and Prefect integration.
+The project includes 33 passing tests covering all components:
 
-### Quick Test Run
+### Run Unit Tests
+
 ```bash
-uv run --with pytest python -m pytest test_sec_scraper.py -v
+# Run all tests
+uv run --with pytest python -m pytest tests/ -v
+
+# Run specific test file
+uv run --with pytest python -m pytest tests/test_sec_scraper.py -v
+
+# Run with coverage
+uv run --with pytest python -m pytest tests/ --cov=src
 ```
 
-### Run Tests with Prefect
+### Run Tests with Prefect Integration
+
 ```bash
-uv run python test_integration.py
+# Run comprehensive Prefect test suite
+uv run python tests/test_integration.py
 ```
 
-### Interactive Test Menu
-```bash
-uv run python run_tests.py
-```
+### Test Results
 
-For detailed testing documentation, see [TESTING.md](TESTING.md).
-
-### Test Coverage
-- ✓ 22 unit tests covering all major functionality
+- ✓ 33 tests passed
+- ✓ 9 tests skipped (Prefect task network mocking - see test_sec_scraper.py)
 - ✓ CIK lookup validation for multiple tickers
-- ✓ Filing data extraction and parsing
+- ✓ SEC filing metadata extraction
+- ✓ XBRL financial data parsing
 - ✓ Parquet data storage and integrity
 - ✓ Error handling and edge cases
+- ✓ Integration with all data sources
 
 ## Project Structure
 
 ```
 .
-├── main.py                 # Main script with Prefect flows and tasks
-├── test_sec_scraper.py    # Unit tests (22 test cases)
-├── test_integration.py    # Prefect test integration flows
-├── run_tests.py           # Interactive test execution menu
-├── pyproject.toml         # Project configuration and dependencies
-├── README.md              # This file
-├── TESTING.md             # Detailed testing documentation
-├── db/                    # Directory for Parquet data files
-└── .github/               # GitHub configuration
-    └── copilot-instructions.md
+├── src/
+│   ├── main.py                 # Main Prefect flow and tasks
+│   ├── xbrl.py                 # XBRL data extraction
+│   ├── alpha_vantage.py        # Alpha Vantage API integration
+│   ├── data_merge.py           # Data aggregation utilities
+│   ├── config.py               # Configuration loader
+│   ├── constants.py            # Project constants
+│   ├── exceptions.py           # Custom exceptions
+│   ├── utils.py                # Helper utilities
+│   └── __init__.py             # Package exports
+├── tests/
+│   ├── test_sec_scraper.py     # Unit tests (22 test cases)
+│   ├── test_xbrl.py            # XBRL parsing tests (11 passed, 9 skipped)
+│   ├── test_integration.py     # Prefect integration tests
+│   └── run_tests.py            # Interactive test menu
+├── db/                         # Data storage directory
+├── config.csv                  # API configuration (create from template)
+├── config.csv.template         # Configuration template
+├── pyproject.toml              # Project metadata and dependencies
+├── README.md                   # This file
+├── TESTING.md                  # Testing documentation
+└── .github/
+    └── copilot-instructions.md # Development guidelines
 ```
+
+## Configuration
+
+### API Keys
+
+Create `config.csv` from the template:
+
+```bash
+cp config.csv.template config.csv
+```
+
+Then add your API keys:
+
+```csv
+API_KEY,VALUE
+ALPHA_VANTAGE_API_KEY,your_key_here
+```
+
+### Environment Variables
+
+Alternatively, set environment variables:
+
+```bash
+export ALPHA_VANTAGE_API_KEY=your_key_here
+```
+
+## Data Sources
+
+### SEC EDGAR
+- **Source**: https://www.sec.gov/
+- **Rate Limit**: ~10 requests per second
+- **Data**: Company filings (10-K, 10-Q, 8-K, etc.)
+
+### XBRL Fundamentals
+- **Source**: SEC's company facts JSON API
+- **Data**: Structured financial metrics (revenue, income, assets, etc.)
+- **Metrics Extracted**:
+  - Revenue
+  - Net income
+  - Total assets/liabilities
+  - Shareholders' equity
+  - Financial ratios (debt-to-equity, current ratio)
+
+### Alpha Vantage (optional)
+- **Source**: https://www.alphavantage.co/
+- **Requires**: Free API key
+- **Data**: Additional fundamental and technical indicators
 
 ## Data Storage
 
 ### Parquet Format
+
 Data is saved in Apache Parquet format with Snappy compression:
-- **Efficient**: Columnar storage format
-- **Compressed**: Reduces file size by ~90%
-- **Fast**: Optimized for analytical queries
-- **Location**: `db/sec_filings_<timestamp>.parquet`
 
-## Dependencies
+```python
+# Read saved data
+import pandas as pd
 
-- **prefect**: Workflow orchestration and monitoring
-- **requests**: HTTP client for API requests
-- **beautifulsoup4**: HTML parsing
-- **pandas**: Data manipulation and CSV export
-- **lxml**: XML/HTML parsing backend
+df = pd.read_parquet("db/financial_data_20251129_143435.parquet")
+print(df.head())
+print(df.info())
 
-## API Rate Limits
+# Export to CSV
+df.to_csv("financial_data.csv", index=False)
+```
 
-The SEC EDGAR API has rate limits. The scraper includes 1-second delays between requests. For bulk operations, consider:
-- Spacing out requests over time
-- Using Prefect's scheduling capabilities
-- Implementing caching for CIK lookups
+**Benefits**:
+- Efficient columnar storage (~90% compression vs CSV)
+- Schema validation and type safety
+- Fast analytical queries
+- Language and platform agnostic
 
-## Notes
+## Prefect Workflow Monitoring
 
-- **User-Agent**: The scraper includes a User-Agent header to identify requests to SEC servers
-- **Data Accuracy**: Filing data is sourced directly from SEC EDGAR
-- **No Financial Advice**: This tool is for research purposes only
+### Start Prefect Server
 
-## Next Steps
+```bash
+uv run python -m prefect server start
+```
 
-- Configure Prefect server for workflow monitoring
-- Add database support for storing filing metadata
-- Implement document parsing for specific sections
-- Add email notifications for new filings
+Then visit http://localhost:4200 to view:
+- Flow run history and logs
+- Task execution timelines
+- Performance metrics
+- Error tracking
+
+### View Flow Runs in Terminal
+
+```bash
+# List recent flow runs
+uv run python -m prefect flow-run ls
+
+# View specific flow run
+uv run python -m prefect flow-run inspect <run-id>
+```
+
+## Architecture
+
+### Prefect Tasks
+
+All data fetching operations are implemented as Prefect tasks with:
+- **Automatic retries**: 3 retries with 5-second delays
+- **Error handling**: Graceful degradation when data sources unavailable
+- **Logging**: Detailed Prefect task logs
+- **Type validation**: Input/output validation
+
+### Flow Structure
+
+```
+aggregate_financial_data (Main Flow)
+├── [For each ticker]
+│   ├── fetch_company_cik (task)
+│   ├── fetch_filing_metadata (task)
+│   ├── fetch_xbrl_data (task)
+│   │   ├── fetch_xbrl_document (task)
+│   │   └── parse_xbrl_fundamentals (task)
+│   ├── fetch_alpha_vantage_data (task)
+│   └── merge_financial_data (task)
+└── save_aggregated_data (task)
+```
+
+## Requirements
+
+- **Core**:
+  - `prefect>=3.6.4` - Workflow orchestration
+  - `requests>=2.31.0` - HTTP client
+  - `beautifulsoup4>=4.12.0` - HTML parsing
+  - `pandas>=2.0.0` - Data manipulation
+  - `pyarrow>=14.0.0` - Parquet support
+  - `python-dotenv>=1.0.0` - Environment variables
+
+- **Development**:
+  - `pytest>=7.4.0` - Testing framework
+  - `pytest-asyncio>=0.21.0` - Async test support
+
+See `pyproject.toml` for complete dependencies.
+
+## Troubleshooting
+
+### Import Errors
+
+If you get import errors, ensure the package is installed in development mode:
+
+```bash
+cd /Users/conordonohue/Desktop/TechStack
+uv sync
+# or
+pip install -e .
+```
+
+### Network Errors
+
+The scraper retries failed requests up to 3 times. If you continue getting errors:
+
+1. Check your internet connection
+2. Verify SEC servers are accessible: https://www.sec.gov/
+3. Check your IP hasn't been rate limited (wait 1+ hour)
+4. Review Prefect logs: `uv run python -m prefect flow-run inspect <run-id>`
+
+### API Key Issues
+
+For Alpha Vantage integration:
+1. Get a free API key from https://www.alphavantage.co/
+2. Add it to `config.csv` or set `ALPHA_VANTAGE_API_KEY` environment variable
+3. The scraper gracefully skips Alpha Vantage data if the key is not configured
+
+## Performance
+
+### Typical Execution Times
+
+- Single ticker (AAPL): ~18 seconds
+- Three tickers (AAPL, MSFT, GOOGL): ~25 seconds
+- Includes network delays and SEC API latency
+
+### Optimization Tips
+
+- Cache CIK lookups for repeated tickers
+- Run flow on a schedule using Prefect Deployments
+- Batch multiple tickers in single flow run
+- Use Prefect's parallel task execution for independent tasks
+
+## Development
+
+### Run Tests During Development
+
+```bash
+# Watch mode (reruns tests on file changes)
+uv run --with pytest python -m pytest tests/ -v --tb=short --looponfail
+
+# Verbose output with tracebacks
+uv run --with pytest python -m pytest tests/ -vv --tb=long
+
+# Run specific test
+uv run --with pytest python -m pytest tests/test_sec_scraper.py::TestCIKExtraction -v
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run python -m black src/ tests/
+
+# Check types
+uv run python -m mypy src/
+
+# Lint
+uv run python -m ruff check src/
+```
 
 ## License
 
 MIT
+
+## Support
+
+For issues or questions:
+1. Check the [Testing Guide](TESTING.md)
+2. Review [Development Instructions](.github/copilot-instructions.md)
+3. Check Prefect logs for detailed error messages

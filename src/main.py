@@ -1,349 +1,415 @@
+"""
+Comprehensive financial data aggregation with Prefect orchestration.
+
+Integrates SEC EDGAR filings, XBRL fundamentals, and Alpha Vantage data
+into unified financial datasets.
+"""
+
 import os
 import time
 from datetime import datetime
 from typing import Optional
 
-import requests
-from bs4 import BeautifulSoup
-from prefect import flow, task, get_run_logger
-from prefect.utilities.asyncutils import sync_compatible
 import pandas as pd
+from prefect import flow, get_run_logger, task
 
-try:
-    from .config import config
-except ImportError:
-    from config import config
+from .alpha_vantage import fetch_fundamental_data
+from .config import config
+from .constants import (
+    ALPHA_VANTAGE_RATE_LIMIT_DELAY,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_TIMEOUT,
+    FILING_TYPE_10_K,
+    INITIAL_BACKOFF_DELAY,
+    REQUEST_MAX_RETRIES,
+)
+from .exceptions import CIKNotFoundError, FilingNotFoundError, ValidationError
+from .utils import (
+    format_timestamp,
+    get_logger,
+    make_request_with_backoff,
+    validate_cik,
+    validate_ticker,
+)
+from .xbrl import (
+    fetch_company_cik as fetch_cik_xbrl,
+    fetch_sec_filing_index,
+    fetch_xbrl_document,
+    parse_xbrl_fundamentals,
+    save_xbrl_data_to_parquet,
+)
 
-
-# SEC EDGAR API endpoints
-SEC_BASE_URL = "https://data.sec.gov/submissions"
-SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
-SEC_FILINGS_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
-
-# Alpha Vantage API endpoint
-ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
-
-# User-Agent rotation to avoid blocking
-USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+__all__ = [
+    "fetch_company_cik",
+    "fetch_integrated_data",
+    "aggregate_financial_data",
 ]
 
-_ua_index = 0
+logger = get_logger(__name__)
 
-def get_next_user_agent() -> str:
-    """Rotate through user agents."""
-    global _ua_index
-    ua = USER_AGENTS[_ua_index % len(USER_AGENTS)]
-    _ua_index += 1
-    return ua
-
-
-def make_sec_request(url: str, max_retries: int = 5, delay: float = 2.0) -> Optional[dict]:
-    """
-    Make a request to SEC API with exponential backoff and user-agent rotation.
-    
-    Args:
-        url: SEC API endpoint
-        max_retries: Maximum retry attempts
-        delay: Initial delay between retries (in seconds)
-        
-    Returns:
-        JSON response or None if failed
-    """
-    for attempt in range(max_retries):
-        try:
-            headers = {
-                "User-Agent": get_next_user_agent(),
-                "Accept": "application/json",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate",
-                "DNT": "1",
-            }
-            
-            response = requests.get(url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 403:
-                # Exponential backoff on 403
-                wait_time = delay * (2 ** attempt)
-                print(f"  [Attempt {attempt + 1}] 403 Forbidden. Waiting {wait_time}s before retry...")
-                time.sleep(wait_time)
-            else:
-                response.raise_for_status()
-                
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = delay * (2 ** attempt)
-                print(f"  [Attempt {attempt + 1}] Error: {e}. Waiting {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                print(f"  [Final attempt] Failed after {max_retries} attempts")
-                return None
-    
-    return None
+# SEC API endpoints
+SEC_BASE_URL = "https://data.sec.gov/submissions"
+SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
 
 @task(retries=3, retry_delay_seconds=5)
-def fetch_company_cik(ticker: str) -> Optional[str]:
+def fetch_company_cik(ticker: str) -> Optional[dict]:
     """
-    Fetch the CIK (Central Index Key) for a company given its ticker symbol.
-    Uses SEC's official company tickers JSON file with exponential backoff.
-    
+    Fetch company information including CIK and filing data.
+
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL')
-        
+        ticker: Stock ticker symbol.
+
     Returns:
-        CIK number as a zero-padded string, or None if not found
+        Dictionary with company info and CIK, or None if not found.
+
+    Raises:
+        ValidationError: If ticker format is invalid.
+        CIKNotFoundError: If CIK cannot be found.
     """
-    logger = get_run_logger()
-    logger.info(f"Fetching CIK for ticker: {ticker}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching company info for ticker: {ticker}")
+
+    if not validate_ticker(ticker):
+        raise ValidationError(f"Invalid ticker format: {ticker}")
+
     try:
-        data = make_sec_request(SEC_COMPANY_TICKERS_URL, max_retries=5, delay=3.0)
-        
-        if not data:
-            logger.error(f"Failed to fetch company tickers for {ticker}")
+        # Use the efficient xbrl function which already has proper headers/retries
+        cik = fetch_cik_xbrl(ticker)
+
+        if not cik:
+            raise CIKNotFoundError(f"Could not find CIK for {ticker}")
+
+        logger_instance.info(f"Found CIK: {cik} for ticker: {ticker}")
+        return {
+            "ticker": ticker,
+            "cik": cik,
+            "fetched_at": datetime.now().isoformat(),
+        }
+
+    except CIKNotFoundError:
+        raise
+    except Exception as e:
+        logger_instance.error(f"Error fetching company info for {ticker}: {e}")
+        raise CIKNotFoundError(f"Error fetching company info for {ticker}: {e}") from e
+
+
+@task(retries=3, retry_delay_seconds=5)
+def fetch_filing_metadata(cik: str, filing_type: str = FILING_TYPE_10_K) -> Optional[dict]:
+    """
+    Fetch latest filing metadata from SEC.
+
+    Args:
+        cik: Company's CIK number.
+        filing_type: Type of filing (e.g., '10-K', '10-Q').
+
+    Returns:
+        Dictionary with filing details and timestamps.
+
+    Raises:
+        FilingNotFoundError: If filing cannot be found.
+    """
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching {filing_type} filing metadata for CIK: {cik}")
+
+    if not validate_cik(cik):
+        raise ValidationError(f"Invalid CIK format: {cik}")
+
+    try:
+        # Use the xbrl function which already has proper headers/retries
+        filing_info = fetch_sec_filing_index(cik, filing_type)
+
+        if not filing_info:
+            raise FilingNotFoundError(f"No {filing_type} filing found for CIK: {cik}")
+
+        # Add fetch timestamp
+        filing_info["fetched_at"] = datetime.now().isoformat()
+        logger_instance.info(f"Found {filing_type} filing: {filing_info['accession_number']}")
+        return filing_info
+
+    except FilingNotFoundError:
+        raise
+    except Exception as e:
+        logger_instance.error(f"Error fetching filing metadata for {cik}: {e}")
+        raise FilingNotFoundError(f"Error fetching filing metadata for {cik}: {e}") from e
+
+
+@task(retries=3, retry_delay_seconds=5)
+def fetch_xbrl_data(cik: str, ticker: str) -> Optional[dict]:
+    """
+    Fetch and parse XBRL fundamental data from SEC.
+
+    Args:
+        cik: Company's CIK number.
+        ticker: Stock ticker symbol.
+
+    Returns:
+        Dictionary with extracted financial metrics and timestamps.
+    """
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching XBRL data for {ticker} (CIK: {cik})")
+
+    try:
+        # Fetch XBRL document from SEC API
+        xbrl_data = fetch_xbrl_document(cik, "")
+
+        if not xbrl_data:
+            logger_instance.warning(f"No XBRL data found for {ticker}")
             return None
-        
-        # Search for the ticker in the data
-        for entry in data.values():
-            if entry.get("ticker", "").upper() == ticker.upper():
-                cik = str(entry.get("cik_str", "")).zfill(10)
-                logger.info(f"Found CIK: {cik} for ticker: {ticker}")
-                return cik
-        
-        logger.warning(f"CIK not found for ticker: {ticker}")
-        return None
-            
+
+        # Parse the XBRL data
+        fundamentals = parse_xbrl_fundamentals(xbrl_data, ticker)
+
+        logger_instance.info(f"Successfully parsed XBRL data for {ticker}")
+        return fundamentals
+
     except Exception as e:
-        logger.error(f"Error fetching CIK for {ticker}: {e}")
-        raise
+        logger_instance.error(f"Error fetching XBRL data for {ticker}: {e}")
+        return None
 
 
 @task(retries=3, retry_delay_seconds=5)
-def fetch_sec_filings(cik: str, filing_type: str = "10-K", limit: int = 10) -> list[dict]:
+def fetch_alpha_vantage_data(ticker: str) -> Optional[dict]:
     """
-    Fetch SEC filings for a given CIK with exponential backoff.
-    
-    Args:
-        cik: Company's CIK number
-        filing_type: Type of filing (e.g., '10-K', '10-Q', '8-K')
-        limit: Maximum number of filings to retrieve
-        
-    Returns:
-        List of filing details including accession number, date, and link
-    """
-    logger = get_run_logger()
-    logger.info(f"Fetching {filing_type} filings for CIK: {cik}")
-    
-    try:
-        url = f"{SEC_BASE_URL}/CIK{cik}.json"
-        data = make_sec_request(url, max_retries=5, delay=2.0)
-        
-        if not data:
-            logger.error(f"Failed to fetch filings for CIK {cik}")
-            return []
-        
-        filings = []
-        if "filings" in data and "recent" in data["filings"]:
-            recent = data["filings"]["recent"]
-            
-            for i, form_type in enumerate(recent.get("form", [])):
-                if form_type == filing_type and len(filings) < limit:
-                    accession_number = recent["accessionNumber"][i]
-                    filing_date = recent["filingDate"][i]
-                    report_date = recent["reportDate"][i]
-                    
-                    filing_info = {
-                        "accession_number": accession_number,
-                        "filing_date": filing_date,
-                        "report_date": report_date,
-                        "form_type": form_type,
-                        "cik": cik
-                    }
-                    filings.append(filing_info)
-        
-        logger.info(f"Found {len(filings)} {filing_type} filings for CIK: {cik}")
-        return filings
-        
-    except Exception as e:
-        logger.error(f"Error fetching filings for CIK {cik}: {e}")
-        raise
+    Fetch fundamental and technical data from Alpha Vantage.
 
-
-@task
-def download_filing_document(accession_number: str, cik: str, filing_type: str = "10-K") -> Optional[str]:
-    """
-    Download the full text filing document.
-    
     Args:
-        accession_number: SEC accession number
-        cik: Company's CIK number
-        filing_type: Type of filing
-        
+        ticker: Stock ticker symbol.
+
     Returns:
-        File path to the downloaded document or None if failed
+        Dictionary with Alpha Vantage metrics and timestamp.
     """
-    logger = get_run_logger()
-    logger.info(f"Downloading filing: {accession_number}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching Alpha Vantage data for {ticker}")
+
     try:
-        # Construct the filing URL
-        accession_no_dash = accession_number.replace("-", "")
-        url = f"https://www.sec.gov/Archives/edgar/{cik}/{accession_no_dash}/{accession_number}-index.htm"
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Save the filing
-        os.makedirs("filings", exist_ok=True)
-        filename = f"filings/{cik}_{accession_number}.html"
-        
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(response.text)
-        
-        logger.info(f"Saved filing to: {filename}")
-        return filename
-        
+        # Check if API key is configured
+        if not config.get_alpha_vantage_key():
+            logger_instance.warning("Alpha Vantage API key not configured, skipping")
+            return None
+
+        # Fetch fundamental data
+        av_data = fetch_fundamental_data(ticker)
+
+        if av_data:
+            av_data["fetched_at"] = datetime.now().isoformat()
+            logger_instance.info(f"Successfully fetched Alpha Vantage data for {ticker}")
+            return av_data
+        else:
+            logger_instance.warning(f"No Alpha Vantage data found for {ticker}")
+            return None
+
     except Exception as e:
-        logger.error(f"Error downloading filing {accession_number}: {e}")
+        logger_instance.error(f"Error fetching Alpha Vantage data for {ticker}: {e}")
         return None
 
 
 @task
-def parse_filing_content(file_path: str) -> dict:
+def merge_financial_data(
+    company_info: dict,
+    filing_metadata: Optional[dict],
+    xbrl_data: Optional[dict],
+    alpha_vantage_data: Optional[dict],
+) -> dict:
     """
-    Parse the filing HTML content to extract key information.
-    
+    Merge all financial data sources into a unified record.
+
     Args:
-        file_path: Path to the saved filing document
-        
+        company_info: Basic company information.
+        filing_metadata: SEC filing metadata.
+        xbrl_data: XBRL fundamentals from SEC.
+        alpha_vantage_data: Alpha Vantage fundamentals.
+
     Returns:
-        Dictionary with extracted filing data
+        Merged dictionary with all available financial data.
     """
-    logger = get_run_logger()
-    logger.info(f"Parsing filing content from: {file_path}")
-    
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            soup = BeautifulSoup(f.read(), "html.parser")
-        
-        # Extract key sections (this is a basic example)
-        extracted_data = {
-            "file_path": file_path,
-            "parsed_at": datetime.now().isoformat(),
-            "title": soup.title.string if soup.title else "N/A"
-        }
-        
-        logger.info(f"Extracted data from filing")
-        return extracted_data
-        
-    except Exception as e:
-        logger.error(f"Error parsing filing {file_path}: {e}")
-        raise
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Merging financial data for {company_info['ticker']}")
+
+    merged = {
+        **company_info,
+        "data_sources": [],
+        "aggregated_at": datetime.now().isoformat(),
+    }
+
+    if filing_metadata:
+        merged.update({
+            f"sec_filing_{k}": v
+            for k, v in filing_metadata.items()
+        })
+        merged["data_sources"].append("sec_filings")
+
+    if xbrl_data:
+        merged.update({
+            f"xbrl_{k}": v
+            for k, v in xbrl_data.items()
+        })
+        merged["data_sources"].append("xbrl")
+
+    if alpha_vantage_data:
+        merged.update({
+            f"av_{k}": v
+            for k, v in alpha_vantage_data.items()
+        })
+        merged["data_sources"].append("alpha_vantage")
+
+    return merged
 
 
 @task
-def save_filings_to_parquet(filings_data: list[dict], output_dir: str = "db") -> str:
+def save_aggregated_data(
+    records: list[dict], output_dir: str = DEFAULT_OUTPUT_DIR
+) -> str:
     """
-    Save filings metadata to a Parquet file.
-    
+    Save aggregated financial data to Parquet file.
+
     Args:
-        filings_data: List of filing dictionaries
-        output_dir: Output directory for Parquet files
-        
+        records: List of merged financial data records.
+        output_dir: Output directory for Parquet files.
+
     Returns:
-        Path to the saved Parquet file
+        Path to saved Parquet file.
     """
-    logger = get_run_logger()
-    logger.info(f"Saving filings data to Parquet in directory: {output_dir}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Saving {len(records)} aggregated records to Parquet")
+
     try:
         os.makedirs(output_dir, exist_ok=True)
-        
-        df = pd.DataFrame(filings_data)
-        
-        # Create filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = f"{output_dir}/sec_filings_{timestamp}.parquet"
-        
-        # Save to Parquet format
-        df.to_parquet(output_file, engine="pyarrow", compression="snappy", index=False)
-        logger.info(f"Saved {len(df)} filings to {output_file}")
+
+        df = pd.DataFrame(records)
+        timestamp = format_timestamp()
+        output_file = f"{output_dir}/financial_data_{timestamp}.parquet"
+
+        df.to_parquet(
+            output_file, engine="pyarrow", compression="snappy", index=False
+        )
+        logger_instance.info(f"Saved aggregated data to {output_file}")
         return output_file
-        
+
     except Exception as e:
-        logger.error(f"Error saving to Parquet: {e}")
+        logger_instance.error(f"Error saving aggregated data: {e}")
         raise
 
 
-@flow(name="SEC Filings Scraper")
-def scrape_sec_filings(tickers: list[str], filing_type: str = "10-K", limit: int = 5):
+@flow(name="Integrated Financial Data Aggregator")
+def aggregate_financial_data(
+    tickers: list[str],
+    filing_type: str = FILING_TYPE_10_K,
+    include_alpha_vantage: bool = True,
+) -> dict:
     """
-    Main Prefect flow to scrape SEC filings for multiple companies.
-    
+    Main Prefect flow to aggregate financial data from multiple sources.
+
+    Combines SEC EDGAR filings, XBRL fundamentals, and Alpha Vantage data
+    into unified financial records for each company.
+
     Args:
-        tickers: List of stock ticker symbols
-        filing_type: Type of SEC filing to retrieve
-        limit: Maximum number of filings per company
+        tickers: List of stock ticker symbols.
+        filing_type: Type of SEC filing to retrieve (default: '10-K').
+        include_alpha_vantage: Whether to fetch Alpha Vantage data.
+
+    Returns:
+        Dictionary with path to saved data and summary statistics.
     """
-    logger = get_run_logger()
-    logger.info(f"Starting SEC filings scraper for tickers: {tickers}")
-    
-    all_filings = []
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(
+        f"Starting financial data aggregation for tickers: {tickers}"
+    )
+
+    aggregated_records = []
+    summary = {
+        "total_tickers": len(tickers),
+        "successful": 0,
+        "failed": 0,
+        "partial": 0,
+        "output_file": None,
+        "started_at": datetime.now().isoformat(),
+    }
+
     for ticker in tickers:
-        logger.info(f"Processing ticker: {ticker}")
-        
-        # Get CIK
-        cik = fetch_company_cik(ticker)
-        if not cik:
-            logger.warning(f"Skipping {ticker} - CIK not found")
+        logger_instance.info(f"Processing {ticker}")
+
+        try:
+            # Step 1: Get company info and CIK
+            company_info = fetch_company_cik(ticker)
+            if not company_info:
+                logger_instance.warning(f"Failed to get company info for {ticker}")
+                summary["failed"] += 1
+                continue
+
+            cik = company_info["cik"]
+
+            # Step 2: Fetch filing metadata
+            filing_metadata = None
+            try:
+                filing_metadata = fetch_filing_metadata(cik, filing_type)
+            except FilingNotFoundError:
+                logger_instance.warning(f"No {filing_type} filing found for {ticker}")
+
+            # Step 3: Fetch XBRL fundamentals
+            xbrl_data = fetch_xbrl_data(cik, ticker)
+
+            # Step 4: Fetch Alpha Vantage data (if enabled)
+            alpha_vantage_data = None
+            if include_alpha_vantage:
+                alpha_vantage_data = fetch_alpha_vantage_data(ticker)
+                time.sleep(ALPHA_VANTAGE_RATE_LIMIT_DELAY)  # Rate limiting
+
+            # Step 5: Merge all data
+            merged_data = merge_financial_data(
+                company_info,
+                filing_metadata,
+                xbrl_data,
+                alpha_vantage_data,
+            )
+            aggregated_records.append(merged_data)
+
+            # Track success
+            if filing_metadata and xbrl_data:
+                summary["successful"] += 1
+            else:
+                summary["partial"] += 1
+
+            # Rate limiting between companies
+            time.sleep(2)
+
+        except (CIKNotFoundError, ValidationError) as e:
+            logger_instance.warning(f"Error processing {ticker}: {e}")
+            summary["failed"] += 1
             continue
-        
-        # Fetch filings
-        filings = fetch_sec_filings(cik, filing_type, limit)
-        
-        for filing in filings:
-            all_filings.append(filing)
-            
-            # Add delay to respect SEC rate limits
-            time.sleep(1)
-            
-            # Optionally download and parse documents
-            # doc_path = download_filing_document(
-            #     filing["accession_number"], 
-            #     cik, 
-            #     filing_type
-            # )
-            # if doc_path:
-            #     parse_filing_content(doc_path)
-    
-    # Save results
-    if all_filings:
-        output_file = save_filings_to_parquet(all_filings)
-        logger.info(f"Scraping complete! Results saved to {output_file}")
+
+    # Step 6: Save aggregated data
+    if aggregated_records:
+        output_file = save_aggregated_data(aggregated_records)
+        summary["output_file"] = output_file
+        logger_instance.info(
+            f"Aggregation complete! Saved {len(aggregated_records)} records"
+        )
     else:
-        logger.warning("No filings found")
-    
-    return all_filings
+        logger_instance.warning("No data was aggregated")
+
+    summary["completed_at"] = datetime.now().isoformat()
+    return summary
 
 
-def main():
-    """Run the SEC filings scraper."""
-    # Example: Scrape 10-K filings for Apple and Microsoft
+def main() -> None:
+    """Run the financial data aggregation with example companies."""
     tickers = ["AAPL", "MSFT"]
-    filings = scrape_sec_filings(tickers, filing_type="10-K", limit=5)
-    print(f"\nScraped {len(filings)} filings successfully!")
+    results = aggregate_financial_data(tickers, filing_type=FILING_TYPE_10_K)
+    print(f"\n{'='*60}")
+    print("Financial Data Aggregation Summary")
+    print(f"{'='*60}")
+    print(f"Total tickers processed: {results['total_tickers']}")
+    print(f"Successful: {results['successful']}")
+    print(f"Partial (missing some data): {results['partial']}")
+    print(f"Failed: {results['failed']}")
+    if results["output_file"]:
+        print(f"Output file: {results['output_file']}")
+    print(f"Started: {results['started_at']}")
+    print(f"Completed: {results['completed_at']}")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":
     main()
+

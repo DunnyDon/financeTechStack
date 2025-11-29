@@ -1,197 +1,255 @@
 """
 XBRL data extraction from SEC filings.
+
 Fetches and parses financial data from 10-K and 10-Q filings.
 """
 
 import os
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
-import xml.etree.ElementTree as ET
 
-import requests
-from prefect import flow, task, get_run_logger
 import pandas as pd
+import requests
+from prefect import flow, get_run_logger, task
 
-try:
-    from .config import config
-except ImportError:
-    from config import config
+from .config import config
+from .constants import (
+    CIK_ZERO_PADDING,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_TIMEOUT,
+    FILING_TYPE_10_K,
+    SEC_BASE_URL,
+    SEC_COMPANY_TICKERS_URL,
+    SEC_FILINGS_URL,
+)
+from .exceptions import CIKNotFoundError, DataParseError, FilingNotFoundError
+from .utils import (
+    format_timestamp,
+    get_logger,
+    get_next_user_agent,
+    make_request_with_backoff,
+    safe_float_conversion,
+    validate_cik,
+    validate_ticker,
+)
 
+__all__ = [
+    "fetch_company_cik",
+    "fetch_sec_filing_index",
+    "fetch_xbrl_document",
+    "parse_xbrl_fundamentals",
+    "save_xbrl_data_to_parquet",
+    "fetch_xbrl_filings",
+]
 
-SEC_BASE_URL = "https://data.sec.gov/submissions"
-SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
-SEC_FILINGS_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
+logger = get_logger(__name__)
+
+# XBRL financial metric tags to extract
+XBRL_REVENUE_TAGS = ["Revenues", "RevenueFromContractWithCustomer"]
+XBRL_INCOME_TAGS = ["NetIncomeLoss"]
+XBRL_OPERATING_TAGS = ["OperatingIncomeLoss"]
+XBRL_NAMESPACES = {
+    "us-gaap": "http://xbrl.us/us-gaap/2023-01-31",
+    "iso4217": "http://www.xbrl.org/2003/iso4217",
+    "xbrli": "http://www.xbrl.org/2003/instance",
+}
 
 
 @task(retries=3, retry_delay_seconds=5)
 def fetch_company_cik(ticker: str) -> Optional[str]:
     """
     Fetch the CIK (Central Index Key) for a company given its ticker symbol.
+
     Uses SEC's official company tickers JSON file.
-    
+
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL')
-        
+        ticker: Stock ticker symbol (e.g., 'AAPL').
+
     Returns:
-        CIK number as a zero-padded string, or None if not found
+        CIK number as a zero-padded string, or None if not found.
+
+    Raises:
+        ValidationError: If ticker format is invalid.
+        CIKNotFoundError: If CIK cannot be found.
     """
-    logger = get_run_logger()
-    logger.info(f"Fetching CIK for ticker: {ticker}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching CIK for ticker: {ticker}")
+
+    if not validate_ticker(ticker):
+        raise ValueError(f"Invalid ticker format: {ticker}")
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        
-        response = requests.get(SEC_COMPANY_TICKERS_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        tickers_data = response.json()
-        
+        # Use make_request_with_backoff for proper retry and rate limiting
+        tickers_data = make_request_with_backoff(
+            SEC_COMPANY_TICKERS_URL,
+            max_retries=5,
+            initial_delay=2.0,
+            timeout=DEFAULT_TIMEOUT,
+            rate_limit_delay=0.1,
+        )
+
+        if not tickers_data:
+            logger_instance.error(f"Failed to fetch company tickers for {ticker}")
+            raise CIKNotFoundError(f"Could not fetch company data for {ticker}")
+
         for entry in tickers_data.values():
             if entry.get("ticker", "").upper() == ticker.upper():
-                cik = str(entry.get("cik_str", "")).zfill(10)
-                logger.info(f"Found CIK: {cik} for ticker: {ticker}")
+                cik = str(entry.get("cik_str", "")).zfill(CIK_ZERO_PADDING)
+                logger_instance.info(f"Found CIK: {cik} for ticker: {ticker}")
                 return cik
-        
-        logger.warning(f"CIK not found for ticker: {ticker}")
-        return None
-            
-    except Exception as e:
-        logger.error(f"Error fetching CIK for {ticker}: {e}")
+
+        logger_instance.warning(f"CIK not found for ticker: {ticker}")
+        raise CIKNotFoundError(f"CIK not found for ticker: {ticker}")
+
+    except CIKNotFoundError:
         raise
+    except Exception as e:
+        logger_instance.error(f"Error fetching CIK for {ticker}: {e}")
+        raise CIKNotFoundError(f"Could not fetch company data for {ticker}") from e
 
 
 @task(retries=3, retry_delay_seconds=5)
-def fetch_sec_filing_index(cik: str, filing_type: str = "10-K") -> Optional[dict]:
+def fetch_sec_filing_index(
+    cik: str, filing_type: str = FILING_TYPE_10_K
+) -> Optional[dict]:
     """
     Fetch the most recent SEC filing index for a given CIK.
-    
+
     Args:
-        cik: Company's CIK number
-        filing_type: Type of filing (e.g., '10-K', '10-Q')
-        
+        cik: Company's CIK number.
+        filing_type: Type of filing (e.g., '10-K', '10-Q').
+
     Returns:
-        Dictionary with filing details (accession number, filing date, index URL)
+        Dictionary with filing details, or None if not found.
+
+    Raises:
+        FilingNotFoundError: If filing cannot be retrieved.
     """
-    logger = get_run_logger()
-    logger.info(f"Fetching {filing_type} filing index for CIK: {cik}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching {filing_type} filing index for CIK: {cik}")
+
+    if not validate_cik(cik):
+        raise ValueError(f"Invalid CIK format: {cik}")
+
     try:
         url = f"{SEC_BASE_URL}/CIK{cik}.json"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
         
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if "filings" not in data or "recent" not in data["filings"]:
-            logger.warning(f"No filings found for CIK: {cik}")
-            return None
-        
+        # Use make_request_with_backoff for proper retry and rate limiting
+        data = make_request_with_backoff(
+            url,
+            max_retries=5,
+            initial_delay=2.0,
+            timeout=DEFAULT_TIMEOUT,
+            rate_limit_delay=0.1,
+        )
+
+        if not data or "filings" not in data or "recent" not in data["filings"]:
+            logger_instance.warning(f"No filings found for CIK: {cik}")
+            raise FilingNotFoundError(f"No filings found for CIK: {cik}")
+
         recent = data["filings"]["recent"]
-        
+
         # Find the most recent filing of the specified type
         for i, form_type in enumerate(recent.get("form", [])):
             if form_type == filing_type:
                 accession_number = recent["accessionNumber"][i]
                 filing_date = recent["filingDate"][i]
-                filing_url = recent.get("primaryDocument", [None])[i] if i < len(recent.get("primaryDocument", [])) else None
-                
+
                 filing_info = {
                     "accession_number": accession_number,
                     "filing_date": filing_date,
                     "filing_type": filing_type,
                     "cik": cik,
                 }
-                
-                logger.info(f"Found {filing_type} filing: {accession_number}")
+
+                logger_instance.info(f"Found {filing_type} filing: {accession_number}")
                 return filing_info
-        
-        logger.warning(f"No {filing_type} filings found for CIK: {cik}")
-        return None
-            
-    except Exception as e:
-        logger.error(f"Error fetching filing index for {cik}: {e}")
+
+        logger_instance.warning(
+            f"No {filing_type} filings found for CIK: {cik}"
+        )
+        raise FilingNotFoundError(
+            f"No {filing_type} filings found for CIK: {cik}"
+        )
+
+    except FilingNotFoundError:
         raise
+    except Exception as e:
+        logger_instance.error(f"Error fetching filing index for {cik}: {e}")
+        raise FilingNotFoundError(
+            f"Error fetching filing index for {cik}: {e}"
+        ) from e
 
 
 @task(retries=3, retry_delay_seconds=5)
-def fetch_xbrl_document(cik: str, accession_number: str) -> Optional[str]:
+def fetch_xbrl_document(
+    cik: str, accession_number: str
+) -> Optional[dict]:
     """
-    Fetch XBRL document from SEC EDGAR.
-    
+    Fetch XBRL document facts from SEC EDGAR JSON API.
+
+    Uses the SEC's JSON API for company facts which is more reliable
+    than downloading ZIP files and parsing XML.
+
     Args:
-        cik: Company's CIK number
-        accession_number: Filing accession number
-        
+        cik: Company's CIK number.
+        accession_number: Filing accession number (not used for JSON API but kept for compatibility).
+
     Returns:
-        XBRL XML content as string, or None if error
+        Dictionary with XBRL facts/metrics, or None if error.
     """
-    logger = get_run_logger()
-    logger.info(f"Fetching XBRL document for accession: {accession_number}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Fetching XBRL data for CIK: {cik}")
+
     try:
-        # Convert accession number to URL format (remove hyphens)
-        accession_clean = accession_number.replace("-", "")
-        
-        # Construct XBRL file URL
-        xbrl_url = (
-            f"https://www.sec.gov/cgi-bin/viewer?"
-            f"action=view&cik={cik}&accession_number={accession_number}"
-            f"&xbrl_type=v"
+        # Use SEC's company facts JSON API for XBRL data
+        # This endpoint provides all financial facts in structured JSON format
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+
+        # Fetch with proper headers and rate limiting
+        data = make_request_with_backoff(
+            url,
+            max_retries=5,
+            initial_delay=2.0,
+            timeout=DEFAULT_TIMEOUT,
+            rate_limit_delay=0.1,
         )
-        
-        # Try alternate URL for XBRL instance document
-        instance_url = (
-            f"https://www.sec.gov/Archives/edgar/full/{accession_clean[0:10]}/"
-            f"{accession_clean[10:12]}/{accession_clean[12:20]}/"
-            f"{accession_number}-xbrl.zip"
-        )
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        
-        # Attempt to fetch XBRL data
-        logger.info(f"Fetching from: {instance_url}")
-        response = requests.get(instance_url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            logger.info(f"Successfully retrieved XBRL document")
-            return response.content
+
+        if data:
+            logger_instance.info(f"Successfully retrieved XBRL data for CIK {cik}")
+            return data
         else:
-            logger.warning(f"XBRL document not found at {instance_url}")
+            logger_instance.warning(f"No XBRL data found for CIK: {cik}")
             return None
-            
+
     except Exception as e:
-        logger.error(f"Error fetching XBRL document: {e}")
+        logger_instance.error(f"Error fetching XBRL data for CIK {cik}: {e}")
         return None
 
 
 @task
-def parse_xbrl_fundamentals(xbrl_data: Optional[str], ticker: str) -> dict:
+def parse_xbrl_fundamentals(xbrl_data: Optional[dict], ticker: str) -> dict:
     """
-    Parse fundamental data from XBRL document.
-    
+    Parse fundamental data from SEC JSON API response.
+
+    Extracts financial metrics from the SEC's company facts JSON format.
+
     Args:
-        xbrl_data: XBRL XML content
-        ticker: Stock ticker symbol
-        
+        xbrl_data: XBRL data dictionary from SEC JSON API.
+        ticker: Stock ticker symbol.
+
     Returns:
-        Dictionary with extracted financial metrics
+        Dictionary with extracted financial metrics.
+
+    Raises:
+        DataParseError: If parsing fails.
     """
-    logger = get_run_logger()
-    logger.info(f"Parsing XBRL data for {ticker}")
-    
-    fundamentals = {
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Parsing XBRL data for {ticker}")
+
+    fundamentals: dict[str, Optional[float]] = {
         "ticker": ticker,
         "revenue": None,
         "net_income": None,
@@ -209,203 +267,202 @@ def parse_xbrl_fundamentals(xbrl_data: Optional[str], ticker: str) -> dict:
         "debt_to_equity": None,
         "timestamp": datetime.now().isoformat(),
     }
-    
-    if not xbrl_data:
-        logger.warning(f"No XBRL data provided for {ticker}")
+
+    if not xbrl_data or "facts" not in xbrl_data:
+        logger_instance.warning(f"No XBRL data provided for {ticker}")
         return fundamentals
-    
+
     try:
-        # Parse XBRL XML
-        root = ET.fromstring(xbrl_data)
-        
-        # Define common namespaces used in XBRL documents
-        namespaces = {
-            "us-gaap": "http://xbrl.us/us-gaap/2023-01-31",
-            "iso4217": "http://www.xbrl.org/2003/iso4217",
-            "xbrli": "http://www.xbrl.org/2003/instance",
-        }
-        
-        # Extract income statement data
-        for element in root.iter():
-            tag = element.tag
-            text = element.text
-            
-            # Revenue
-            if "Revenues" in tag or "RevenueFromContractWithCustomer" in tag:
-                try:
-                    fundamentals["revenue"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Net Income
-            if "NetIncomeLoss" in tag:
-                try:
-                    fundamentals["net_income"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Operating Income
-            if "OperatingIncomeLoss" in tag:
-                try:
-                    fundamentals["operating_income"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Balance Sheet - Assets
-            if "Assets" in tag and "Current" not in tag:
-                try:
-                    fundamentals["total_assets"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Balance Sheet - Liabilities
-            if "Liabilities" in tag and "Current" not in tag:
-                try:
-                    fundamentals["total_liabilities"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Shareholders' Equity
-            if "StockholdersEquity" in tag or "ShareholdersEquity" in tag:
-                try:
-                    fundamentals["shareholders_equity"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Current Assets
-            if "CurrentAssets" in tag:
-                try:
-                    fundamentals["current_assets"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Current Liabilities
-            if "CurrentLiabilities" in tag:
-                try:
-                    fundamentals["current_liabilities"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-            
-            # Operating Cash Flow
-            if "NetCashProvidedByUsedInOperatingActivities" in tag or "CashFlowFromOperatingActivities" in tag:
-                try:
-                    fundamentals["operating_cash_flow"] = float(text) if text else None
-                except (ValueError, TypeError):
-                    pass
-        
+        facts = xbrl_data.get("facts", {})
+        us_gaap = facts.get("us-gaap", {})
+
+        # Extract revenue
+        if "Revenues" in us_gaap:
+            revenue_data = us_gaap["Revenues"].get("units", {}).get("USD", [])
+            if revenue_data:
+                # Get the most recent value
+                latest = max(revenue_data, key=lambda x: x.get("filed", ""))
+                fundamentals["revenue"] = safe_float_conversion(latest.get("val"))
+
+        # Extract net income
+        if "NetIncomeLoss" in us_gaap:
+            income_data = us_gaap["NetIncomeLoss"].get("units", {}).get("USD", [])
+            if income_data:
+                latest = max(income_data, key=lambda x: x.get("filed", ""))
+                fundamentals["net_income"] = safe_float_conversion(latest.get("val"))
+
+        # Extract total assets
+        if "Assets" in us_gaap:
+            assets_data = us_gaap["Assets"].get("units", {}).get("USD", [])
+            if assets_data:
+                latest = max(assets_data, key=lambda x: x.get("filed", ""))
+                fundamentals["total_assets"] = safe_float_conversion(latest.get("val"))
+
+        # Extract total liabilities
+        if "Liabilities" in us_gaap:
+            liabilities_data = us_gaap["Liabilities"].get("units", {}).get("USD", [])
+            if liabilities_data:
+                latest = max(liabilities_data, key=lambda x: x.get("filed", ""))
+                fundamentals["total_liabilities"] = safe_float_conversion(latest.get("val"))
+
+        # Extract shareholders' equity
+        for equity_tag in ["StockholdersEquity", "ShareholdersEquity"]:
+            if equity_tag in us_gaap:
+                equity_data = us_gaap[equity_tag].get("units", {}).get("USD", [])
+                if equity_data:
+                    latest = max(equity_data, key=lambda x: x.get("filed", ""))
+                    fundamentals["shareholders_equity"] = safe_float_conversion(latest.get("val"))
+                    break
+
+        # Extract current assets
+        if "CurrentAssets" in us_gaap:
+            current_assets_data = us_gaap["CurrentAssets"].get("units", {}).get("USD", [])
+            if current_assets_data:
+                latest = max(current_assets_data, key=lambda x: x.get("filed", ""))
+                fundamentals["current_assets"] = safe_float_conversion(latest.get("val"))
+
+        # Extract current liabilities
+        if "CurrentLiabilities" in us_gaap:
+            current_liab_data = us_gaap["CurrentLiabilities"].get("units", {}).get("USD", [])
+            if current_liab_data:
+                latest = max(current_liab_data, key=lambda x: x.get("filed", ""))
+                fundamentals["current_liabilities"] = safe_float_conversion(latest.get("val"))
+
         # Calculate derived metrics
         if fundamentals["total_assets"] and fundamentals["total_liabilities"]:
             try:
                 equity = fundamentals["total_assets"] - fundamentals["total_liabilities"]
                 if equity != 0:
-                    fundamentals["debt_to_equity"] = fundamentals["total_liabilities"] / equity
+                    fundamentals["debt_to_equity"] = (
+                        fundamentals["total_liabilities"] / equity
+                    )
             except (TypeError, ZeroDivisionError):
                 pass
-        
+
         if fundamentals["current_assets"] and fundamentals["current_liabilities"]:
             try:
-                fundamentals["current_ratio"] = fundamentals["current_assets"] / fundamentals["current_liabilities"]
+                fundamentals["current_ratio"] = (
+                    fundamentals["current_assets"] / fundamentals["current_liabilities"]
+                )
             except (TypeError, ZeroDivisionError):
                 pass
-        
-        logger.info(f"Successfully parsed XBRL data for {ticker}")
-        
-    except ET.ParseError as e:
-        logger.error(f"XML parse error for {ticker}: {e}")
+
+        logger_instance.info(f"Successfully parsed XBRL data for {ticker}")
+
     except Exception as e:
-        logger.error(f"Error parsing XBRL data for {ticker}: {e}")
-    
+        logger_instance.error(f"Error parsing XBRL data for {ticker}: {e}")
+        raise DataParseError(f"Error parsing XBRL data for {ticker}: {e}") from e
+
     return fundamentals
 
 
 @task
-def save_xbrl_data_to_parquet(xbrl_list: list[dict], output_dir: str = "db") -> str:
+def save_xbrl_data_to_parquet(
+    xbrl_list: list[dict], output_dir: str = DEFAULT_OUTPUT_DIR
+) -> str:
     """
     Save XBRL data to Parquet file.
-    
+
     Args:
-        xbrl_list: List of XBRL data dictionaries
-        output_dir: Output directory
-        
+        xbrl_list: List of XBRL data dictionaries.
+        output_dir: Output directory.
+
     Returns:
-        Path to saved Parquet file
+        Path to saved Parquet file.
+
+    Raises:
+        IOError: If file cannot be written.
     """
-    logger = get_run_logger()
-    logger.info(f"Saving {len(xbrl_list)} XBRL records to Parquet")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Saving {len(xbrl_list)} XBRL records to Parquet")
+
     try:
         os.makedirs(output_dir, exist_ok=True)
-        
+
         df = pd.DataFrame(xbrl_list)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = format_timestamp()
         file_path = os.path.join(output_dir, f"xbrl_data_{timestamp}.parquet")
-        
+
         df.to_parquet(file_path, compression="snappy", index=False)
-        logger.info(f"Saved XBRL data to {file_path}")
-        
+        logger_instance.info(f"Saved XBRL data to {file_path}")
+
         return file_path
-        
+
     except Exception as e:
-        logger.error(f"Error saving XBRL data to Parquet: {e}")
+        logger_instance.error(f"Error saving XBRL data to Parquet: {e}")
         raise
 
 
 @flow
-def fetch_xbrl_filings(tickers: list[str], filing_type: str = "10-K") -> str:
+def fetch_xbrl_filings(
+    tickers: list[str], filing_type: str = FILING_TYPE_10_K
+) -> str:
     """
     Main Prefect flow to fetch XBRL data for multiple companies.
-    
+
     Args:
-        tickers: List of stock tickers
-        filing_type: Type of filing (10-K or 10-Q)
-        
+        tickers: List of stock tickers.
+        filing_type: Type of filing (10-K or 10-Q).
+
     Returns:
-        Path to saved Parquet file
+        Path to saved Parquet file.
     """
-    logger = get_run_logger()
-    logger.info(f"Starting XBRL fetch flow for tickers: {tickers}")
-    
+    logger_instance = get_run_logger()
+    logger_instance.info(f"Starting XBRL fetch flow for tickers: {tickers}")
+
     xbrl_data = []
-    
+
     for ticker in tickers:
-        logger.info(f"Processing {ticker}")
-        
-        # Fetch CIK
-        cik = fetch_company_cik(ticker)
-        if not cik:
-            logger.warning(f"Could not find CIK for {ticker}")
+        logger_instance.info(f"Processing {ticker}")
+
+        try:
+            # Fetch CIK
+            cik = fetch_company_cik(ticker)
+            if not cik:
+                logger_instance.warning(f"Could not find CIK for {ticker}")
+                continue
+
+            # Fetch filing index
+            filing_info = fetch_sec_filing_index(cik, filing_type)
+            if not filing_info:
+                logger_instance.warning(
+                    f"Could not find {filing_type} filing for {ticker}"
+                )
+                continue
+
+            # Fetch XBRL document
+            xbrl_doc = fetch_xbrl_document(cik, filing_info["accession_number"])
+            if not xbrl_doc:
+                logger_instance.warning(f"Could not fetch XBRL document for {ticker}")
+                continue
+
+            # Parse XBRL data
+            fundamentals = parse_xbrl_fundamentals(xbrl_doc, ticker)
+            xbrl_data.append(fundamentals)
+
+        except (CIKNotFoundError, FilingNotFoundError, DataParseError) as e:
+            logger_instance.warning(f"Error processing {ticker}: {e}")
             continue
-        
-        # Fetch filing index
-        filing_info = fetch_sec_filing_index(cik, filing_type)
-        if not filing_info:
-            logger.warning(f"Could not find {filing_type} filing for {ticker}")
-            continue
-        
-        # Fetch XBRL document
-        xbrl_doc = fetch_xbrl_document(cik, filing_info["accession_number"])
-        if not xbrl_doc:
-            logger.warning(f"Could not fetch XBRL document for {ticker}")
-            continue
-        
-        # Parse XBRL data
-        fundamentals = parse_xbrl_fundamentals(xbrl_doc, ticker)
-        xbrl_data.append(fundamentals)
-        
+
         # Rate limiting: wait 2 seconds between requests
         time.sleep(2)
-    
+
     # Save to Parquet
     if xbrl_data:
         file_path = save_xbrl_data_to_parquet(xbrl_data)
-        logger.info(f"XBRL flow completed. Data saved to {file_path}")
+        logger_instance.info(f"XBRL flow completed. Data saved to {file_path}")
         return file_path
     else:
-        logger.warning("No XBRL data collected")
+        logger_instance.warning("No XBRL data collected")
         return ""
 
 
-if __name__ == "__main__":
-    # Test with AAPL and MSFT
+def main() -> None:
+    """Test XBRL fetching with example companies."""
     result = fetch_xbrl_filings(["AAPL", "MSFT"])
     print(f"Results saved to: {result}")
+
+
+if __name__ == "__main__":
+    main()
+
