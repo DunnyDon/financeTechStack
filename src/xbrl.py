@@ -41,7 +41,9 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
     
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         
         response = requests.get(SEC_COMPANY_TICKERS_URL, headers=headers, timeout=10)
@@ -81,7 +83,9 @@ def fetch_sec_filing_index(cik: str, filing_type: str = "10-K") -> Optional[dict
     try:
         url = f"{SEC_BASE_URL}/CIK{cik}.json"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         
         response = requests.get(url, headers=headers, timeout=10)
