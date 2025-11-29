@@ -12,7 +12,10 @@ import requests
 from prefect import flow, task, get_run_logger
 import pandas as pd
 
-from config import config
+try:
+    from .config import config
+except ImportError:
+    from config import config
 
 
 ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"

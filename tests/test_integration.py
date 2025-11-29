@@ -9,10 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from prefect import flow, task, get_run_logger
 import pandas as pd
+import sys
+
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @task(retries=2, retry_delay_seconds=5)
-def run_pytest_tests(test_file: str = "test_sec_scraper.py", verbose: bool = True) -> dict:
+def run_pytest_tests(test_file: str = "tests/test_sec_scraper.py", verbose: bool = True) -> dict:
     """
     Run pytest tests and capture results.
     
@@ -252,7 +256,7 @@ def run_all_tests() -> dict:
     logger.info("Starting SEC Scraper Test Suite")
     
     # Run all tests
-    test_results = run_pytest_tests("test_sec_scraper.py", verbose=True)
+    test_results = run_pytest_tests("tests/test_sec_scraper.py", verbose=True)
     
     # Validate results
     tests_passed = validate_test_results(test_results)
@@ -294,7 +298,7 @@ def run_test_classes() -> dict:
     results = {}
     for test_class in test_classes:
         logger.info(f"Running {test_class}...")
-        result = run_specific_test_class("test_sec_scraper.py", test_class)
+        result = run_specific_test_class("tests/test_sec_scraper.py", test_class)
         results[test_class] = result
     
     logger.info("All test classes completed")
@@ -321,8 +325,8 @@ def run_coverage_tests() -> dict:
             "python",
             "-m",
             "pytest",
-            "test_sec_scraper.py",
-            "--cov=.",
+            "tests/test_sec_scraper.py",
+            "--cov=src",
             "--cov-report=term",
             "-v",
         ]
