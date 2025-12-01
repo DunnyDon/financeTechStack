@@ -13,6 +13,7 @@ wheels/
 config.csv
 .env
 .env.local
+holdings.csv
 
 # Data and outputs
 db/*.parquet
