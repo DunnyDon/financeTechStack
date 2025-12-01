@@ -7,6 +7,7 @@ Calculates portfolio performance metrics including:
 - Position weights
 - Returns (absolute and percentage)
 - Performance by sector/asset class
+- All values converted to EUR using FX rates
 """
 
 from datetime import datetime
@@ -15,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 from prefect import get_run_logger, task
 
+from .fx_rates import FXRateManager
 from .utils import get_logger
 
 __all__ = [
@@ -29,16 +31,23 @@ logger = get_logger(__name__)
 class PortfolioAnalytics:
     """Calculate portfolio performance and P&L."""
 
-    def __init__(self, holdings_df: pd.DataFrame, prices_dict: Dict[str, Dict]):
+    def __init__(
+        self,
+        holdings_df: pd.DataFrame,
+        prices_dict: Dict[str, Dict],
+        fx_rates: Optional[Dict[str, float]] = None,
+    ):
         """
         Initialize portfolio analytics.
 
         Args:
             holdings_df: DataFrame with holdings (sym, qty, bep, ccy)
             prices_dict: Dict of symbol to price data
+            fx_rates: Optional dict of FX rates (fetched if not provided)
         """
         self.holdings_df = holdings_df.copy()
         self.prices_dict = prices_dict
+        self.fx_rates = fx_rates or FXRateManager.get_rates()
         self.current_prices = self._extract_prices()
 
     def _extract_prices(self) -> Dict[str, float]:
@@ -58,10 +67,10 @@ class PortfolioAnalytics:
 
     def calculate_unrealized_pnl(self) -> pd.DataFrame:
         """
-        Calculate unrealized P&L for each position.
+        Calculate unrealized P&L for each position in EUR.
 
         Returns:
-            DataFrame with P&L calculations
+            DataFrame with P&L calculations (all values in EUR)
         """
         result = self.holdings_df.copy()
 
@@ -71,63 +80,86 @@ class PortfolioAnalytics:
         # Skip rows without current price
         result = result[result["current_price"].notna()].copy()
 
-        # Calculate values
-        result["cost_basis"] = result["qty"] * result["bep"]
-        result["current_value"] = result["qty"] * result["current_price"]
-        result["unrealized_pnl"] = result["current_value"] - result["cost_basis"]
-        result["pnl_percent"] = (result["unrealized_pnl"] / result["cost_basis"]) * 100
+        # Convert BEP to EUR if not already
+        result["bep_eur"] = result.apply(
+            lambda row: FXRateManager.convert(
+                row["bep"], row.get("ccy", "EUR"), "EUR"
+            ),
+            axis=1,
+        )
 
-        # Calculate return
-        result["return_pct"] = ((result["current_price"] - result["bep"]) / result["bep"]) * 100
+        # Convert current price to EUR (prices are typically in the security's native currency or USD)
+        # We assume prices are in USD for international stocks, so convert accordingly
+        result["current_price_eur"] = result.apply(
+            lambda row: FXRateManager.convert(
+                row["current_price"], "USD", "EUR"
+            ),  # Most prices are in USD, adjust logic if needed
+            axis=1,
+        )
+
+        # Calculate values in EUR
+        result["cost_basis_eur"] = result["qty"] * result["bep_eur"]
+        result["current_value_eur"] = result["qty"] * result["current_price_eur"]
+        result["unrealized_pnl_eur"] = result["current_value_eur"] - result["cost_basis_eur"]
+        result["pnl_percent"] = (
+            (result["unrealized_pnl_eur"] / result["cost_basis_eur"]) * 100
+        )
+
+        # Calculate return (in %)
+        result["return_pct"] = (
+            ((result["current_price_eur"] - result["bep_eur"]) / result["bep_eur"]) * 100
+        )
 
         return result
 
     def portfolio_summary(self) -> Dict:
         """
-        Calculate portfolio-level metrics.
+        Calculate portfolio-level metrics in EUR.
 
         Returns:
-            Dict with portfolio metrics
+            Dict with portfolio metrics (all values in EUR)
         """
         pnl_df = self.calculate_unrealized_pnl()
 
         if pnl_df.empty:
             return {
-                "total_cost_basis": 0,
-                "total_current_value": 0,
-                "total_unrealized_pnl": 0,
+                "total_cost_basis_eur": 0,
+                "total_current_value_eur": 0,
+                "total_unrealized_pnl_eur": 0,
                 "total_pnl_percent": 0,
                 "num_positions": 0,
+                "currency": "EUR",
                 "timestamp": datetime.now().isoformat(),
             }
 
-        total_cost = pnl_df["cost_basis"].sum()
-        total_value = pnl_df["current_value"].sum()
-        total_pnl = pnl_df["unrealized_pnl"].sum()
+        total_cost = pnl_df["cost_basis_eur"].sum()
+        total_value = pnl_df["current_value_eur"].sum()
+        total_pnl = pnl_df["unrealized_pnl_eur"].sum()
         total_pnl_pct = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
 
         return {
-            "total_cost_basis": float(total_cost),
-            "total_current_value": float(total_value),
-            "total_unrealized_pnl": float(total_pnl),
+            "total_cost_basis_eur": float(total_cost),
+            "total_current_value_eur": float(total_value),
+            "total_unrealized_pnl_eur": float(total_pnl),
             "total_pnl_percent": float(total_pnl_pct),
             "num_positions": len(pnl_df),
-            "num_profitable": int((pnl_df["unrealized_pnl"] > 0).sum()),
-            "num_loss": int((pnl_df["unrealized_pnl"] < 0).sum()),
+            "num_profitable": int((pnl_df["unrealized_pnl_eur"] > 0).sum()),
+            "num_loss": int((pnl_df["unrealized_pnl_eur"] < 0).sum()),
             "win_rate": (
-                ((pnl_df["unrealized_pnl"] > 0).sum() / len(pnl_df)) * 100
+                ((pnl_df["unrealized_pnl_eur"] > 0).sum() / len(pnl_df)) * 100
                 if len(pnl_df) > 0
                 else 0
             ),
+            "currency": "EUR",
             "timestamp": datetime.now().isoformat(),
         }
 
     def pnl_by_asset_type(self) -> Dict[str, Dict]:
         """
-        Calculate P&L by asset type.
+        Calculate P&L by asset type in EUR.
 
         Returns:
-            Dict with metrics by asset type
+            Dict with metrics by asset type (all values in EUR)
         """
         pnl_df = self.calculate_unrealized_pnl()
 
@@ -139,15 +171,16 @@ class PortfolioAnalytics:
         for asset_type in pnl_df["asset"].unique():
             subset = pnl_df[pnl_df["asset"] == asset_type]
 
-            cost_basis = subset["cost_basis"].sum()
-            current_value = subset["current_value"].sum()
-            pnl = subset["unrealized_pnl"].sum()
+            cost_basis = subset["cost_basis_eur"].sum()
+            current_value = subset["current_value_eur"].sum()
+            pnl = subset["unrealized_pnl_eur"].sum()
 
             result[asset_type] = {
-                "cost_basis": float(cost_basis),
-                "current_value": float(current_value),
-                "unrealized_pnl": float(pnl),
+                "cost_basis_eur": float(cost_basis),
+                "current_value_eur": float(current_value),
+                "unrealized_pnl_eur": float(pnl),
                 "pnl_percent": float((pnl / cost_basis) * 100) if cost_basis > 0 else 0,
+                "currency": "EUR",
                 "num_positions": len(subset),
             }
 

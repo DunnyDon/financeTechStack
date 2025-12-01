@@ -1,52 +1,216 @@
 # Testing Guide
 
-Comprehensive testing guide for the Finance TechStack project. Covers unit tests, integration tests, and Prefect workflow testing.
+## Running Tests
 
-## Overview
+### Quick Test
 
-The test suite includes 33 passing tests and 9 skipped tests:
+```bash
+uv run pytest tests/ -v
+```
 
-- **33 tests passing**: Full coverage of all components
-- **9 tests skipped**: Prefect task mocking tests (covered in test_sec_scraper.py)
-- **Execution time**: ~2.6 seconds
-- **Coverage**: Core functionality, error handling, edge cases
+### With Coverage Report
 
-## Test Files
+```bash
+uv run pytest tests/ --cov=src --cov-report=html
+# Open htmlcov/index.html to view coverage
+```
 
-### `tests/test_sec_scraper.py` (22 tests - All passing)
+### Run Specific Test File
 
-Unit tests for SEC data extraction. Organized into 5 test classes:
+```bash
+uv run pytest tests/test_portfolio_analytics.py -v
+```
 
-- **TestCIKExtraction** (6 tests)
-  - CIK lookup for AAPL, MSFT, AMZN
-  - Case-insensitive lookups
-  - Invalid ticker handling
-  - CIK zero-padding validation
+### Run Specific Test
 
-- **TestFilingExtraction** (6 tests)
-  - 10-K filing extraction
-  - Required field validation
-  - Filing limit enforcement
-  - Empty response handling
-  - Multiple filing types (10-K, 10-Q)
-  - Non-existent filing types
+```bash
+uv run pytest tests/test_portfolio_analytics.py::TestPortfolioMetrics::test_pnl_calculation -v
+```
 
-- **TestParquetSaving** (3 tests)
-  - Parquet file creation
-  - Data integrity validation
-  - Multiple record storage
+## Test Organization
 
-- **TestIntegration** (2 tests)
-  - CIK fetch integration
-  - Filing fetch integration
+```
+tests/
+├── test_portfolio_flows.py      # Prefect flow orchestration
+├── test_portfolio_analytics.py  # P&L, signals, metrics
+├── test_portfolio_prices.py     # Price fetching
+├── test_portfolio_technical.py  # Technical indicators
+├── test_portfolio_fundamentals.py # Fundamental metrics
+├── test_xbrl.py                 # SEC XBRL parsing
+├── test_cache.py                # Caching layer
+├── test_parquet_db.py           # Data storage
+├── test_fx_rates.py             # Currency conversion
+├── test_integration.py          # End-to-end workflows
+└── test_portfolio_integration.py # Multi-component flows
+```
 
-- **TestParametrized** (5 tests)
-  - Multiple tickers: AAPL, MSFT, AMZN
-  - Multiple filing types: 10-K, 10-Q
+## Test Categories
 
-### `tests/test_xbrl.py` (11 passed, 9 skipped)
+### Unit Tests
+Component-level tests with mocked dependencies:
 
-Tests for XBRL financial data extraction:
+```bash
+uv run pytest tests/ -k "not integration" -v
+```
+
+### Integration Tests
+Full workflow tests with real data:
+
+```bash
+uv run pytest tests/test_integration.py -v
+```
+
+### Performance Tests
+Benchmark-style tests:
+
+```bash
+uv run pytest tests/ -v -m performance --durations=10
+```
+
+## Writing Tests
+
+### Basic Unit Test
+
+```python
+import pytest
+from src.portfolio_analytics import PortfolioAnalyzer
+
+def test_pnl_calculation():
+    analyzer = PortfolioAnalyzer()
+    pnl = analyzer.calculate_pnl(
+        entry_price=100.0,
+        current_price=110.0,
+        shares=10
+    )
+    assert pnl == 100.0
+```
+
+### Fixture Usage
+
+```python
+@pytest.fixture
+def sample_holdings():
+    return [
+        {"ticker": "AAPL", "shares": 10, "entry_price": 150},
+        {"ticker": "MSFT", "shares": 5, "entry_price": 300},
+    ]
+
+def test_portfolio_value(sample_holdings):
+    analyzer = PortfolioAnalyzer(sample_holdings)
+    assert analyzer.total_value > 0
+```
+
+### Mocking External APIs
+
+```python
+from unittest.mock import patch
+
+@patch('src.portfolio_prices.PriceFetcher.fetch_price')
+def test_price_fetch_with_mock(mock_fetch):
+    mock_fetch.return_value = 150.00
+    
+    price = fetch_price("AAPL")
+    assert price == 150.00
+    mock_fetch.assert_called_once_with("AAPL")
+```
+
+### Async Test
+
+```python
+@pytest.mark.asyncio
+async def test_async_workflow():
+    result = await async_fetch_prices(["AAPL", "MSFT"])
+    assert len(result) == 2
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: astral-sh/setup-uv@v1
+      - run: uv sync
+      - run: uv run pytest tests/ --cov=src
+      - uses: codecov/codecov-action@v3
+```
+
+## Test Coverage Goals
+
+| Component | Target |
+|-----------|--------|
+| analytics_flows.py | 85%+ |
+| portfolio_flows.py | 85%+ |
+| portfolio_analytics.py | 90%+ |
+| portfolio_prices.py | 80%+ |
+| xbrl.py | 75%+ |
+| **Overall** | **80%+** |
+
+Current coverage: Run `uv run pytest --cov=src --cov-report=term-missing`
+
+## Debugging Tests
+
+### Verbose Output
+
+```bash
+uv run pytest tests/ -vv --tb=long
+```
+
+### Print Debug Info
+
+```python
+def test_something():
+    result = some_function()
+    print(f"DEBUG: {result}")  # Shows with -s flag
+    assert result == expected
+```
+
+Enable prints:
+
+```bash
+uv run pytest tests/ -s  # Show print statements
+```
+
+### Drop into Debugger
+
+```python
+def test_something():
+    import pdb; pdb.set_trace()  # Breakpoint
+    result = some_function()
+    assert result == expected
+```
+
+Run with:
+
+```bash
+uv run pytest tests/ --pdb
+```
+
+## Performance Profiling
+
+```bash
+# Run with timing
+uv run pytest tests/ --durations=10
+
+# Profile specific test
+uv run pytest tests/test_portfolio_analytics.py::test_large_portfolio -v --profile
+```
+
+## Known Issues & Workarounds
+
+| Issue | Workaround |
+|-------|-----------|
+| Timeout on slow network | Increase pytest timeout: `pytest --timeout=30` |
+| Flaky API tests | Use `@pytest.mark.flaky(reruns=3)` |
+| Cache interference | Clear cache: `rm -rf .pytest_cache src/__pycache__` |
 
 - **TestCIKExtraction** (5 tests - Skipped)
   - Reason: Prefect task mocking - use test_sec_scraper.py instead

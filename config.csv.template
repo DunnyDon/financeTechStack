@@ -1,2 +1,7 @@
 api_key,value
-alpha_vantage_key,your_Api_key_here
+alpha_vantage_key,your_alpha_vantage_key_here
+report_email,your_email@gmail.com
+smtp_host,smtp.gmail.com
+smtp_port,587
+sender_email,your_gmail@gmail.com
+sender_password,your_app_password_here

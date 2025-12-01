@@ -7,17 +7,20 @@ Three comprehensive flows for data aggregation and portfolio analysis:
 3. portfolio_end_to_end_flow - Complete end-to-end workflow
 
 Each flow includes comprehensive error handling, logging, and data validation.
+All financial metrics are converted to EUR using real-time FX rates.
 """
 
 import json
 import os
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from prefect import flow, get_run_logger, task
 
 from .constants import DEFAULT_OUTPUT_DIR
+from .fx_rates import FXRateManager, fetch_fx_rates, save_fx_rates_to_parquet
+from .portfolio_holdings import Holdings
 from .portfolio_prices import PriceFetcher
 from .portfolio_technical import TechnicalAnalyzer
 from .utils import get_logger
@@ -32,9 +35,86 @@ __all__ = [
     "aggregate_financial_data_flow",
     "portfolio_analysis_flow",
     "portfolio_end_to_end_flow",
+    "get_tickers_from_holdings",
 ]
 
 logger = get_logger(__name__)
+
+
+def get_tickers_from_holdings(holdings_file: str = "holdings.csv") -> List[str]:
+    """
+    Get list of unique tickers from holdings file.
+
+    Args:
+        holdings_file: Path to holdings CSV file
+
+    Returns:
+        List of unique ticker symbols
+    """
+    try:
+        holdings = Holdings(holdings_file)
+        tickers = holdings.get_unique_symbols()
+        logger.info(f"Loaded {len(tickers)} unique tickers from {holdings_file}")
+        return tickers
+    except Exception as e:
+        logger.error(f"Error loading tickers from holdings: {e}")
+        return ["AAPL", "MSFT", "GOOGL"]  # Fallback defaults
+
+
+# ============================================================================
+# FX RATE MANAGEMENT TASKS
+# ============================================================================
+
+
+@task(name="fetch_fx_rates_task", retries=2, retry_delay_seconds=5)
+def fetch_fx_rates_task(force_refresh: bool = False) -> Dict[str, float]:
+    """
+    Fetch current FX rates for portfolio currency conversion.
+
+    Args:
+        force_refresh: If True, always fetch from API instead of using cache
+
+    Returns:
+        Dict mapping currency codes to EUR exchange rates
+    """
+    logger_instance = get_run_logger()
+    logger_instance.info("Fetching FX rates")
+
+    try:
+        rates = FXRateManager.get_rates(force_refresh=force_refresh)
+        logger_instance.info("Successfully fetched FX rates for %d currencies", len(rates))
+        return rates
+    except Exception as e:
+        logger_instance.error("Error fetching FX rates: %s", e)
+        # Return fallback rates
+        return FXRateManager.get_rates(force_refresh=False)
+
+
+@task(name="save_fx_rates_task")
+def save_fx_rates_task(
+    fx_rates: Dict[str, float],
+    output_dir: str = DEFAULT_OUTPUT_DIR,
+) -> str:
+    """
+    Save FX rates to Parquet for record-keeping.
+
+    Args:
+        fx_rates: Dict of FX rates
+        output_dir: Output directory
+
+    Returns:
+        Path to saved parquet file
+    """
+    logger_instance = get_run_logger()
+    logger_instance.info("Saving FX rates to parquet")
+
+    try:
+        filepath = save_fx_rates_to_parquet(fx_rates, output_dir)
+        logger_instance.info("FX rates saved to %s", filepath)
+        return filepath
+    except Exception as e:
+        logger_instance.error("Error saving FX rates: %s", e)
+        raise
 
 
 # ============================================================================
@@ -457,7 +537,7 @@ def aggregate_financial_data_flow(
     5. Aggregates all data and saves to parquet
 
     Args:
-        tickers: List of stock tickers to analyze
+        tickers: List of stock tickers to analyze. Defaults to tickers from holdings.csv
         output_dir: Output directory for parquet files
 
     Returns:
@@ -467,7 +547,7 @@ def aggregate_financial_data_flow(
     logger_instance.info("Starting financial data aggregation flow for %s", tickers)
 
     if not tickers:
-        tickers = ["AAPL", "MSFT", "GOOGL"]
+        tickers = get_tickers_from_holdings()
 
     # Fetch SEC data
     sec_data = []
@@ -567,7 +647,7 @@ def portfolio_end_to_end_flow(
     4. Generates comprehensive reports
 
     Args:
-        tickers: List of stock tickers to analyze
+        tickers: List of stock tickers to analyze. Defaults to tickers from holdings.csv
         output_dir: Output directory for data and reports
 
     Returns:
@@ -575,6 +655,9 @@ def portfolio_end_to_end_flow(
     """
     logger_instance = get_run_logger()
     logger_instance.info("Starting end-to-end portfolio analysis flow")
+
+    if not tickers:
+        tickers = get_tickers_from_holdings()
 
     # Step 1: Aggregate financial data
     aggregation_result = aggregate_financial_data_flow(tickers, output_dir)

@@ -14,6 +14,7 @@ import pandas as pd
 import requests
 from prefect import flow, get_run_logger, task
 
+from .cache import CIKCache
 from .config import config
 from .constants import (
     CIK_ZERO_PADDING,
@@ -62,7 +63,8 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
     """
     Fetch the CIK (Central Index Key) for a company given its ticker symbol.
 
-    Uses SEC's official company tickers JSON file.
+    Checks cache first before querying SEC's official company tickers JSON file.
+    Caches result for future use to avoid API rate limits.
 
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL').
@@ -79,6 +81,12 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
 
     if not validate_ticker(ticker):
         raise ValueError(f"Invalid ticker format: {ticker}")
+
+    # Check cache first
+    cached_cik = CIKCache.get(ticker)
+    if cached_cik:
+        logger_instance.info(f"Using cached CIK for {ticker}: {cached_cik}")
+        return cached_cik
 
     try:
         # Use make_request_with_backoff for proper retry and rate limiting
@@ -98,6 +106,8 @@ def fetch_company_cik(ticker: str) -> Optional[str]:
             if entry.get("ticker", "").upper() == ticker.upper():
                 cik = str(entry.get("cik_str", "")).zfill(CIK_ZERO_PADDING)
                 logger_instance.info(f"Found CIK: {cik} for ticker: {ticker}")
+                # Cache the result
+                CIKCache.set(ticker, cik)
                 return cik
 
         logger_instance.warning(f"CIK not found for ticker: {ticker}")
@@ -377,14 +387,28 @@ def save_xbrl_data_to_parquet(
     logger_instance.info(f"Saving {len(xbrl_list)} XBRL records to Parquet")
 
     try:
-        os.makedirs(output_dir, exist_ok=True)
-
+        from .parquet_db import ParquetDB
+        
         df = pd.DataFrame(xbrl_list)
-        timestamp = format_timestamp()
-        file_path = os.path.join(output_dir, f"xbrl_data_{timestamp}.parquet")
+        
+        # Ensure required columns for XBRL_FILINGS table
+        if 'filing_date' not in df.columns:
+            df['filing_date'] = pd.Timestamp.now()
+        if 'period_end_date' not in df.columns:
+            df['period_end_date'] = pd.Timestamp.now()
+        if 'created_at' not in df.columns:
+            df['created_at'] = pd.Timestamp.now()
+        if 'updated_at' not in df.columns:
+            df['updated_at'] = pd.Timestamp.now()
+        if 'ticker' not in df.columns:
+            df['ticker'] = 'unknown'
+        if 'cik' not in df.columns:
+            df['cik'] = 'unknown'
 
-        df.to_parquet(file_path, compression="snappy", index=False)
-        logger_instance.info(f"Saved XBRL data to {file_path}")
+        # Use ParquetDB for optimized storage with partitioning
+        db = ParquetDB(output_dir)
+        inserted, updated = db.upsert_xbrl_filings(df)
+        logger_instance.info(f"Saved XBRL data: {inserted} new, {updated} updated")
 
         return file_path
 
