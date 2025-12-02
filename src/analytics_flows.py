@@ -255,7 +255,7 @@ def calculate_pnl_enhanced(
     holdings_df: pd.DataFrame, prices_dict: Dict
 ) -> pd.DataFrame:
     """
-    Calculate enhanced P&L with all metrics.
+    Calculate enhanced P&L with all metrics, including cash and fixed-income.
 
     Args:
         holdings_df: Portfolio holdings
@@ -268,8 +268,37 @@ def calculate_pnl_enhanced(
     task_logger.info("Calculating enhanced P&L...")
 
     try:
+        from .fx_rates import FXRateManager
+        
         analytics = PortfolioAnalytics(holdings_df, prices_dict)
         pnl_df = analytics.calculate_unrealized_pnl()
+
+        # Add cash and fixed-income positions that don't have prices
+        cash_fixed_income = holdings_df[
+            holdings_df["asset"].isin(["cash", "fixed-income"])
+        ].copy()
+        
+        if not cash_fixed_income.empty:
+            # For cash/fixed-income: qty is the actual amount, convert to EUR
+            cash_fixed_income["current_price"] = 1.0  # Placeholder
+            cash_fixed_income["current_price_eur"] = 1.0  # Normalized for conversion
+            
+            # Convert qty (which is the actual amount) to EUR
+            cash_fixed_income["current_value_eur"] = cash_fixed_income.apply(
+                lambda row: FXRateManager.convert(
+                    row["qty"], row.get("ccy", "EUR"), "EUR"
+                ),
+                axis=1,
+            )
+            
+            # Cost basis is the same as current value for cash/fixed-income
+            cash_fixed_income["cost_basis_eur"] = cash_fixed_income["current_value_eur"]
+            cash_fixed_income["bep_eur"] = 1.0  # Placeholder
+            cash_fixed_income["unrealized_pnl_eur"] = 0  # No P&L for cash/fixed-income
+            cash_fixed_income["pnl_percent"] = 0
+            cash_fixed_income["return_pct"] = 0
+            
+            pnl_df = pd.concat([pnl_df, cash_fixed_income], ignore_index=True)
 
         task_logger.info(
             f"P&L Calculation: {len(pnl_df)} positions, "
@@ -280,6 +309,59 @@ def calculate_pnl_enhanced(
 
     except Exception as e:
         task_logger.error(f"Error calculating P&L: {e}")
+        raise
+
+
+@task(name="calculate_portfolio_weights")
+def calculate_portfolio_weights(pnl_data: pd.DataFrame) -> Dict:
+    """
+    Calculate portfolio weight breakdown by asset class.
+
+    Args:
+        pnl_data: DataFrame with P&L data including asset class info
+
+    Returns:
+        Dictionary with asset class weights
+    """
+    task_logger = get_run_logger()
+    task_logger.info("Calculating portfolio weights...")
+
+    try:
+        if pnl_data.empty:
+            return {"error": "No P&L data available"}
+
+        total_value = pnl_data["current_value_eur"].sum()
+        
+        if total_value == 0:
+            return {"error": "Total portfolio value is zero"}
+
+        weights = {
+            "timestamp": datetime.now().isoformat(),
+            "total_value_eur": total_value,
+            "by_asset_class": {},
+        }
+
+        # Weight by asset class (including cash and fixed-income)
+        if "asset" in pnl_data.columns:
+            asset_breakdown = (
+                pnl_data.groupby("asset")["current_value_eur"]
+                .sum()
+                .to_dict()
+            )
+            weights["by_asset_class"] = {
+                asset: {
+                    "value_eur": value,
+                    "weight_percent": (value / total_value * 100) if total_value > 0 else 0,
+                    "count": len(pnl_data[pnl_data["asset"] == asset])
+                }
+                for asset, value in asset_breakdown.items()
+            }
+
+        task_logger.info(f"Portfolio weights calculated: {weights['by_asset_class']}")
+        return weights
+
+    except Exception as e:
+        task_logger.error(f"Error calculating portfolio weights: {e}")
         raise
 
 
@@ -582,9 +664,20 @@ def enhanced_analytics_flow(
 
         # Analyze
         pnl_data = calculate_pnl_enhanced(holdings_df, prices_dict)
+        portfolio_weights = calculate_portfolio_weights(pnl_data)
         technical_signals = analyze_technical_signals(technical_data)
         fundamental_metrics = analyze_fundamental_metrics(fundamental_data)
         insights = generate_insights(pnl_data, technical_signals, fundamental_metrics)
+
+        # Save portfolio weights to Parquet
+        if "error" not in portfolio_weights:
+            try:
+                db = ParquetDB()
+                weights_df = pd.DataFrame([portfolio_weights])
+                db.save(weights_df, "portfolio_weights")
+                flow_logger.info("Portfolio weights saved to Parquet")
+            except Exception as e:
+                flow_logger.warning(f"Could not save portfolio weights: {e}")
 
         # Generate report
         report_result = generate_analytics_report(
@@ -597,6 +690,7 @@ def enhanced_analytics_flow(
         result = {
             "status": "success",
             "pnl_data": pnl_data.to_dict("records") if not pnl_data.empty else [],
+            "portfolio_weights": portfolio_weights,
             "technical_signals": technical_signals,
             "fundamental_metrics": fundamental_metrics,
             "insights": insights,
@@ -609,6 +703,7 @@ def enhanced_analytics_flow(
                 pnl_data=pnl_data,
                 technical_data=technical_data,
                 fundamental_data=fundamental_data,
+                portfolio_weights=portfolio_weights,
                 email=email,
             )
             result["email_sent"] = email_success

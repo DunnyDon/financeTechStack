@@ -31,17 +31,18 @@ uv run pytest tests/test_portfolio_analytics.py::TestPortfolioMetrics::test_pnl_
 
 ```
 tests/
-├── test_portfolio_flows.py      # Prefect flow orchestration
-├── test_portfolio_analytics.py  # P&L, signals, metrics
-├── test_portfolio_prices.py     # Price fetching
-├── test_portfolio_technical.py  # Technical indicators
-├── test_portfolio_fundamentals.py # Fundamental metrics
-├── test_xbrl.py                 # SEC XBRL parsing
-├── test_cache.py                # Caching layer
-├── test_parquet_db.py           # Data storage
-├── test_fx_rates.py             # Currency conversion
-├── test_integration.py          # End-to-end workflows
-└── test_portfolio_integration.py # Multi-component flows
+├── test_portfolio_flows.py         # Prefect flow orchestration
+├── test_portfolio_analytics.py     # P&L, signals, metrics
+├── test_portfolio_prices.py        # Price fetching
+├── test_portfolio_technical.py     # Technical indicators
+├── test_portfolio_fundamentals.py  # Fundamental metrics
+├── test_xbrl.py                    # SEC XBRL parsing
+├── test_cache.py                   # Caching layer
+├── test_parquet_db.py              # Data storage
+├── test_fx_rates.py                # Currency conversion
+├── test_news_analysis.py           # News scraping & sentiment analysis
+├── test_integration.py             # End-to-end workflows
+└── test_portfolio_integration.py   # Multi-component flows
 ```
 
 ## Test Categories
@@ -59,6 +60,32 @@ Full workflow tests with real data:
 ```bash
 uv run pytest tests/test_integration.py -v
 ```
+
+### News Analysis & RSS Feed Tests
+Validates news scraping and sentiment analysis:
+
+```bash
+# Test all news analysis functionality
+uv run pytest tests/test_news_analysis.py -v
+
+# Test RSS feed health (scrapes real feeds)
+uv run pytest tests/test_news_analysis.py::test_scrape_news_headlines -v
+
+# Test sentiment analysis
+uv run pytest tests/test_news_analysis.py::test_analyze_news_sentiment -v
+
+# Test portfolio impact assessment
+uv run pytest tests/test_news_analysis.py::test_portfolio_impact_assessment -v
+```
+
+**Expected Results:**
+- Scrapes 150+ articles from 13-18 news sources
+- Completes in ~5-10 seconds
+- Analyzes sentiment for all articles
+- Identifies affected sectors and timeframes
+- Correlates with portfolio holdings
+
+**Note:** Individual feed timeouts are normal (2-4 sources may fail). System automatically uses fallback sources and continues analysis.
 
 ### Performance Tests
 Benchmark-style tests:

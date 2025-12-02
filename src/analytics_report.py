@@ -99,10 +99,10 @@ class AnalyticsReporter:
 
         # Top gainers and losers
         report["top_gainers"] = (
-            pnl_data.nlargest(5, "pnl_percent")[["sym", "pnl_percent", "unrealized_pnl_eur"]].to_dict("records")
+            pnl_data.nlargest(5, "unrealized_pnl_eur")[["sym", "pnl_percent", "unrealized_pnl_eur"]].to_dict("records")
         )
         report["top_losers"] = (
-            pnl_data.nsmallest(5, "pnl_percent")[["sym", "pnl_percent", "unrealized_pnl_eur"]].to_dict("records")
+            pnl_data.nsmallest(5, "unrealized_pnl_eur")[["sym", "pnl_percent", "unrealized_pnl_eur"]].to_dict("records")
         )
 
         return report
@@ -289,7 +289,7 @@ class AnalyticsReporter:
             return None
 
     def generate_html_report(
-        self, pnl_report: Dict, technical_report: Dict, fundamental_report: Dict
+        self, pnl_report: Dict, technical_report: Dict, fundamental_report: Dict, portfolio_weights: Dict = None, news_analysis: Dict = None
     ) -> str:
         """
         Generate HTML report combining all analyses.
@@ -298,10 +298,14 @@ class AnalyticsReporter:
             pnl_report: P&L analysis results
             technical_report: Technical analysis results
             fundamental_report: Fundamental analysis results
+            portfolio_weights: Portfolio weight breakdown by sector and asset class
+            news_analysis: News sentiment analysis results
 
         Returns:
-            HTML string for email body
+            HTML formatted report string
         """
+        if portfolio_weights is None:
+            portfolio_weights = {}
         html = f"""
         <html>
         <head>
@@ -403,6 +407,31 @@ class AnalyticsReporter:
                 </div>
             </div>
             """
+
+            # Portfolio Weights by Asset Class
+            if portfolio_weights.get("by_asset_class"):
+                html += """
+                <div class="section">
+                    <h2>📋 Portfolio Allocation by Asset Class</h2>
+                    <table>
+                        <tr>
+                            <th>Asset Class</th>
+                            <th>Value (EUR)</th>
+                            <th>Weight %</th>
+                            <th>Count</th>
+                        </tr>
+                """
+                for asset, data in sorted(portfolio_weights["by_asset_class"].items(), 
+                                         key=lambda x: x[1]["weight_percent"], reverse=True):
+                    html += f"""
+                        <tr>
+                            <td>{asset}</td>
+                            <td>€{data.get('value_eur', 0):,.2f}</td>
+                            <td><strong>{data.get('weight_percent', 0):.1f}%</strong></td>
+                            <td>{data.get('count', 0)}</td>
+                        </tr>
+                    """
+                html += "</table></div>"
 
             # Top Gainers
             if pnl_report.get("top_gainers"):
@@ -733,6 +762,102 @@ class AnalyticsReporter:
             </div>
             """
 
+        # News Analysis Section
+        if news_analysis and isinstance(news_analysis, dict) and "impact_summary" in news_analysis:
+            impact_summary = news_analysis.get("impact_summary", {})
+            html += """
+            <div class="section">
+                <h2>📰 News Sentiment Analysis</h2>
+            """
+            
+            articles_analyzed = impact_summary.get("articles_analyzed", 0)
+            html += f"""
+                <div class="metric">
+                    <strong>Articles Analyzed:</strong> {articles_analyzed}
+                </div>
+            """
+            
+            # Sentiment by timeframe
+            by_timeframe = impact_summary.get("by_timeframe", {})
+            if by_timeframe:
+                html += """
+                <h3>Sentiment Breakdown by Timeframe</h3>
+                <table>
+                    <tr>
+                        <th>Timeframe</th>
+                        <th class="positive">Bullish</th>
+                        <th class="negative">Bearish</th>
+                        <th>Neutral</th>
+                    </tr>
+                """
+                for timeframe, counts in by_timeframe.items():
+                    bullish = counts.get("bullish", 0)
+                    bearish = counts.get("bearish", 0)
+                    neutral = counts.get("neutral", 0)
+                    html += f"""
+                    <tr>
+                        <td><strong>{timeframe.replace('_', ' ').title()}</strong></td>
+                        <td class="positive">{bullish}</td>
+                        <td class="negative">{bearish}</td>
+                        <td>{neutral}</td>
+                    </tr>
+                    """
+                html += "</table>"
+            
+            # Key Risks
+            key_risks = impact_summary.get("key_risks", [])
+            if key_risks:
+                html += """
+                <h3>⚠️ Key Risks</h3>
+                <table>
+                    <tr>
+                        <th>Sector</th>
+                        <th class="negative">Bearish Articles</th>
+                        <th>Latest Headline</th>
+                    </tr>
+                """
+                for risk in key_risks[:5]:
+                    sector = risk.get("sector", "N/A").title()
+                    bearish_count = risk.get("bearish_articles", 0)
+                    headline = risk.get("headline", "N/A")[:80]
+                    html += f"""
+                    <tr>
+                        <td>{sector}</td>
+                        <td class="negative"><strong>{bearish_count}</strong></td>
+                        <td>{headline}...</td>
+                    </tr>
+                    """
+                html += "</table>"
+            
+            # Key Opportunities
+            key_opportunities = impact_summary.get("key_opportunities", [])
+            if key_opportunities:
+                html += """
+                <h3>✅ Key Opportunities</h3>
+                <table>
+                    <tr>
+                        <th>Sector</th>
+                        <th class="positive">Bullish Articles</th>
+                        <th>Latest Headline</th>
+                    </tr>
+                """
+                for opp in key_opportunities[:5]:
+                    sector = opp.get("sector", "N/A").title()
+                    bullish_count = opp.get("bullish_articles", 0)
+                    headline = opp.get("headline", "N/A")[:80]
+                    html += f"""
+                    <tr>
+                        <td>{sector}</td>
+                        <td class="positive"><strong>{bullish_count}</strong></td>
+                        <td>{headline}...</td>
+                    </tr>
+                    """
+                html += "</table>"
+            
+            html += """
+            </div>
+            """
+
         html += """
         </body>
         </html>
@@ -801,6 +926,7 @@ def generate_analytics_report(
     technical_data: Optional[pd.DataFrame] = None,
     fundamental_data: Optional[pd.DataFrame] = None,
     email: Optional[str] = None,
+    news_analysis: Optional[Dict] = None,
 ) -> Dict:
     """
     Generate comprehensive analytics report.
@@ -810,6 +936,7 @@ def generate_analytics_report(
         technical_data: Technical indicators
         fundamental_data: Fundamental metrics
         email: Email address for delivery
+        news_analysis: News sentiment analysis results
 
     Returns:
         Dictionary with report status and results
@@ -830,7 +957,7 @@ def generate_analytics_report(
         fundamental_report = reporter.generate_fundamental_report(fundamental_df)
 
         # Generate HTML
-        html_body = reporter.generate_html_report(pnl_report, technical_report, fundamental_report)
+        html_body = reporter.generate_html_report(pnl_report, technical_report, fundamental_report, news_analysis=news_analysis)
 
         result = {
             "status": "success",
@@ -853,7 +980,9 @@ def send_analytics_email(
     pnl_data: Optional[pd.DataFrame] = None,
     technical_data: Optional[pd.DataFrame] = None,
     fundamental_data: Optional[pd.DataFrame] = None,
+    portfolio_weights: Optional[Dict] = None,
     email: Optional[str] = None,
+    news_analysis: Optional[Dict] = None,
 ) -> bool:
     """
     Generate and send analytics report via email.
@@ -862,7 +991,9 @@ def send_analytics_email(
         pnl_data: Portfolio P&L data
         technical_data: Technical indicators
         fundamental_data: Fundamental metrics
+        portfolio_weights: Portfolio weight breakdown by sector and asset class
         email: Email address for delivery
+        news_analysis: News sentiment analysis results
 
     Returns:
         True if successful
@@ -882,7 +1013,9 @@ def send_analytics_email(
         fundamental_report = reporter.generate_fundamental_report(fundamental_df)
 
         # Generate HTML
-        html_body = reporter.generate_html_report(pnl_report, technical_report, fundamental_report)
+        html_body = reporter.generate_html_report(
+            pnl_report, technical_report, fundamental_report, portfolio_weights or {}, news_analysis=news_analysis
+        )
 
         # Send email
         subject = f"Portfolio Analytics Report - {datetime.now().strftime('%Y-%m-%d')}"

@@ -16,7 +16,7 @@ config.csv
 holdings.csv
 
 # Data and outputs
-db/*.parquet
+**/*.parquet
 test_results.json
 test_report.json
 htmlcov/
