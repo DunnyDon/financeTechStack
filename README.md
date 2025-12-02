@@ -122,6 +122,20 @@ tests/
 └── test_portfolio_integration.py
 ```
 
+## Documentation
+
+See [docs/INDEX.md](docs/INDEX.md) for complete documentation including:
+- **[Getting Started](docs/INSTALL.md)** - Installation and setup
+- **[Usage Guide](docs/USAGE.md)** - How to run workflows
+- **[API Reference](docs/API.md)** - Function documentation
+- **[Testing Guide](docs/TESTING.md)** - Running tests
+- **[Deployment](docs/DEPLOY.md)** - Production deployment
+- **[Dask Parallelization](docs/phase1/EXPANSION_GUIDE.md)** - ⭐ NEW Phase 1 expansion (3-5x speedup)
+
+**Phase 1: Parallel Processing** (✅ COMPLETE)
+- Real 4.8x speedup with technical/news/pricing parallelization
+- See [Phase 1 Expansion](docs/phase1/PHASE1_EXPANSION_COMPLETE.md) for details
+
 ## Development
 
 ```bash

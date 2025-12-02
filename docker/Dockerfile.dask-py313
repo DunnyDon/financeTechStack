@@ -1,0 +1,25 @@
+# Use official Python 3.13 image
+FROM python:3.13-slim
+
+# Install system dependencies needed for Dask
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Dask and distributed
+RUN pip install --no-cache-dir \
+    dask[complete]==2025.11.0 \
+    distributed==2025.11.0 \
+    cloudpickle \
+    psutil \
+    msgpack
+
+# Create app directory
+WORKDIR /app
+
+# Copy entrypoint script
+RUN echo '#!/bin/bash\nset -e\nexec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["dask-worker"]

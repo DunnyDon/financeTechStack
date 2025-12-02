@@ -18,8 +18,8 @@ FULL_IMAGE="$IMAGE_NAME:$IMAGE_TAG"
 
 echo -e "${YELLOW}Building Docker image: $FULL_IMAGE${NC}"
 
-# Build image
-if docker build -t $FULL_IMAGE .; then
+# Build image (from docker/)
+if docker build -f docker/Dockerfile -t $FULL_IMAGE .; then
     echo -e "${GREEN}✓ Docker image built successfully${NC}"
 else
     echo -e "${RED}✗ Failed to build Docker image${NC}"
@@ -46,7 +46,7 @@ fi
 
 # Test 3: Docker Compose build
 echo -e "\n${YELLOW}Test 3: Testing docker-compose build...${NC}"
-if docker-compose build; then
+if docker-compose -f docker/docker-compose.yml build; then
     echo -e "${GREEN}✓ Docker Compose build successful${NC}"
 else
     echo -e "${RED}✗ Docker Compose build failed${NC}"
@@ -55,29 +55,29 @@ fi
 
 # Test 4: Docker Compose up (health check)
 echo -e "\n${YELLOW}Test 4: Starting docker-compose services...${NC}"
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 
 echo -e "${YELLOW}Waiting for services to be healthy...${NC}"
 sleep 10
 
 # Check if services are running
-if docker-compose ps | grep -q "Up"; then
+if docker-compose -f docker/docker-compose.yml ps | grep -q "Up"; then
     echo -e "${GREEN}✓ Services started successfully${NC}"
 else
     echo -e "${RED}✗ Services failed to start${NC}"
-    docker-compose logs
-    docker-compose down
+    docker-compose -f docker/docker-compose.yml logs
+    docker-compose -f docker/docker-compose.yml down
     exit 1
 fi
 
 # Test 5: Run tests in compose
 echo -e "\n${YELLOW}Test 5: Running tests via docker-compose...${NC}"
-if docker-compose run --rm techstack python -m pytest tests/test_sec_scraper.py::TestCIKExtraction::test_extract_cik_aapl -v; then
+if docker-compose -f docker/docker-compose.yml run --rm techstack python -m pytest tests/test_sec_scraper.py::TestCIKExtraction::test_extract_cik_aapl -v; then
     echo -e "${GREEN}✓ Tests via docker-compose passed${NC}"
 else
     echo -e "${RED}✗ Tests via docker-compose failed${NC}"
-    docker-compose logs
-    docker-compose down
+    docker-compose -f docker/docker-compose.yml logs
+    docker-compose -f docker/docker-compose.yml down
     exit 1
 fi
 
@@ -99,7 +99,7 @@ fi
 
 # Cleanup
 echo -e "\n${YELLOW}Cleaning up...${NC}"
-docker-compose down -v
+docker-compose -f docker/docker-compose.yml down -v
 
 # Image info
 echo -e "\n${YELLOW}=== Image Information ===${NC}"
@@ -111,4 +111,4 @@ echo -e "${YELLOW}Next steps:${NC}"
 echo "1. Push to registry: docker push $FULL_IMAGE"
 echo "2. Deploy to AWS: bash deploy/aws-ecs-deploy.sh"
 echo "3. Deploy to Kubernetes: kubectl apply -f deploy/kubernetes/deployment.yaml"
-echo "4. Run locally: docker-compose up"
+echo "4. Run locally: docker-compose -f docker/docker-compose.yml up"

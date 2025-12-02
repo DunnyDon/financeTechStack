@@ -1,23 +1,49 @@
 # Documentation Index
 
-Quick reference guide for the Finance TechStack project.
+Central hub for all Finance TechStack documentation.
 
-## Getting Started (5 minutes)
+## 🚀 Quick Start (5 minutes)
 
-1. **[Quick Start](../README.md)** - Read the main README
-2. **[Installation](INSTALL.md)** - Setup Python environment and config
+1. **[README](../README.md)** - Main project overview
+2. **[Installation](INSTALL.md)** - Setup environment and config
 3. **[Usage](USAGE.md)** - Run your first workflow
 
-## Working with Code
+## 📚 Core Documentation
 
+### Development
 - **[API Reference](API.md)** - Complete API documentation
 - **[Testing Guide](TESTING.md)** - Run and write tests
+- **[News Analysis](NEWS_ANALYSIS.md)** - News sentiment feature
 
-## Deployment
-
+### Deployment
 - **[Deployment Guide](DEPLOY.md)** - Docker, AWS ECS, Kubernetes
 
-## Common Tasks
+## 🚀 Dask & Parallel Processing
+
+### Phase 1 - Foundation Setup
+- **[Infrastructure Setup](infrastructure/INFRASTRUCTURE_SUMMARY.md)** - Overview of Prefect + Dask
+- **[Detailed Setup](infrastructure/INFRASTRUCTURE_PREFECT_DASK.md)** - Complete setup guide
+- **[Infrastructure Index](infrastructure/INFRASTRUCTURE_DOCS_INDEX.md)** - All infrastructure resources
+
+### Phase 1a - Pricing Parallelization (COMPLETE ✅)
+- **[Dask Parallelization](infrastructure/DASK_PARALLELIZATION.md)** - Architecture overview
+- **[Implementation Summary](infrastructure/DASK_IMPLEMENTATION_SUMMARY.md)** - Phase 1a details
+- **[Quick Reference](infrastructure/DASK_QUICK_REFERENCE.md)** - Commands and examples
+- **[Completion Checklist](infrastructure/DASK_COMPLETION_CHECKLIST.md)** - Verification
+- **[File Manifest](infrastructure/DASK_FILE_MANIFEST.md)** - All files involved
+
+### Phase 1b - Technical/News/Pricing Analysis (COMPLETE ✅)
+- **[Phase 1 Expansion](phase1/PHASE1_EXPANSION_COMPLETE.md)** - ⭐ **START HERE**
+- **[Quick Reference](phase1/PHASE1_EXPANSION.md)** - Commands and flows
+- **[Implementation Summary](phase1/PHASE1_EXPANSION_SUMMARY.md)** - What was built
+- **[Verification Checklist](phase1/PHASE1_EXPANSION_CHECKLIST.md)** - Completeness check
+- **[Setup Instructions](phase1/PHASE1_DASK_LOCAL_SETUP.md)** - Local cluster setup
+- **[Legacy Checklist](phase1/PHASE1_CHECKLIST.md)** - Original checklist
+
+### Setup Resources
+- **[Copy-Paste Commands](infrastructure/COPYPASTE_PHASE1.md)** - Ready-to-run setup
+
+## 📖 Common Tasks
 
 | Task | Reference |
 |------|-----------|
@@ -27,6 +53,8 @@ Quick reference guide for the Finance TechStack project.
 | Query SEC filings | [API: XBRL Functions](API.md#helper-functions) |
 | Deploy to AWS | [Deploy: AWS ECS](DEPLOY.md#aws-ecs) |
 | Run tests | [Testing: Quick Test](TESTING.md#quick-test) |
+| Run parallel analysis | [Phase 1: Quick Start](phase1/PHASE1_EXPANSION_COMPLETE.md#-quick-start-30-seconds) |
+| Check Dask status | [Infrastructure: Quick Reference](infrastructure/DASK_QUICK_REFERENCE.md#cluster-status-check) |
 
 ## File Structure
 

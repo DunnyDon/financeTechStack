@@ -1,33 +1,78 @@
-# Quick Reference Card
+# Quick Reference
 
-**Finance TechStack** - Portfolio Analytics with Financial Data Aggregation
+Central quick reference for Finance TechStack.
 
-## Start Here
+## 📖 Documentation Hub
 
+**Start here:** [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
+
+### Core Docs
+- [Installation](docs/INSTALL.md) - Setup instructions
+- [Usage Guide](docs/USAGE.md) - How to run workflows  
+- [API Reference](docs/API.md) - Function documentation
+- [Testing](docs/TESTING.md) - Run and write tests
+- [Deployment](docs/DEPLOY.md) - Production deployment
+
+### Dask Parallelization (NEW ⭐)
+- **[Phase 1 Expansion](docs/phase1/PHASE1_EXPANSION_COMPLETE.md)** - 3-5x faster analysis
+- [Quick Start Commands](docs/phase1/QUICK_REFERENCE.md) - Run parallel flows
+- [Complete Guide](docs/phase1/EXPANSION_GUIDE.md) - Architecture & details
+- [Setup Instructions](docs/phase1/PHASE1_DASK_LOCAL_SETUP.md) - Local cluster setup
+
+## 🚀 Common Commands
+
+### Setup (one-time)
 ```bash
-# Setup (5 minutes)
-git clone <repo> && cd TechStack
 uv sync
 cp config.csv.template config.csv
-# Edit config.csv with your email & API keys
+# Edit config.csv with your settings
 ```
 
-## Run Main Workflows
+### Prefect Server Management
+```bash
+# Start Prefect server and verify setup
+uv run python scripts/prefect_manager.py start
 
+# Deploy flows to dashboard
+uv run python scripts/prefect_manager.py deploy
+
+# Check server status
+uv run python scripts/prefect_manager.py status
+
+# Open dashboard at http://localhost:4200
+```
+
+### Run Main Workflows
 ```bash
 # Portfolio Analytics (P&L + Signals + Email)
 uv run python -c "from src.analytics_flows import enhanced_analytics_flow; enhanced_analytics_flow(send_email_report=True)"
 
-# Fetch All Financial Data
-uv run python -c "from src.portfolio_flows import aggregate_financial_data_flow; aggregate_financial_data_flow()"
+# Parallel Analysis (NEW - 3-5x faster)
+uv run python -c "from src.dask_integrated_flows import dask_combined_analysis_flow; print(dask_combined_analysis_flow(tickers=['AAPL', 'MSFT']))"
 
-# Analyze Portfolio
-uv run python -c "from src.portfolio_flows import portfolio_analysis_flow; portfolio_analysis_flow()"
+# Run Tests
+uv run pytest tests/ -v
+
+# Run with Coverage
+uv run pytest tests/ --cov=src --cov-report=html
 ```
 
-## Key Modules
+### Check Setup
+```bash
+# Verify Python version
+python --version  # Should be 3.13+
+
+# Verify dependencies
+uv pip list | grep -E "prefect|dask|pandas"
+
+# Verify config
+cat config.csv | head -5
+```
+
+## 📋 Key Modules
 
 | Module | Purpose |
+
 |--------|---------|
 | `analytics_flows.py` | Portfolio P&L + signals |
 | `portfolio_flows.py` | Data aggregation orchestration |

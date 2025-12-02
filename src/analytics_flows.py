@@ -802,3 +802,38 @@ def generate_fundamental_insights(fundamental_metrics: Dict) -> str:
         insights.append(f"Average ROE: {avg_roe:.2f}%")
 
     return "\n".join(insights) if insights else "No fundamental data available"
+
+
+if __name__ == "__main__":
+    """
+    Run enhanced analytics flow directly or serve for Prefect server.
+    
+    Usage:
+        # Run once
+        uv run python src/analytics_flows.py
+        
+        # Serve on Prefect server
+        uv run python src/analytics_flows.py --serve
+    """
+    import sys
+    
+    if "--serve" in sys.argv:
+        # Serve the flows for Prefect scheduler/UI
+        print("📡 Serving enhanced_analytics_flow on Prefect server...")
+        enhanced_analytics_flow.serve(
+            name="Enhanced Analytics",
+            description="Comprehensive portfolio analytics with technical, fundamental, and P&L analysis"
+        )
+    else:
+        # Run once
+        print("🚀 Running enhanced_analytics_flow...")
+        result = enhanced_analytics_flow(send_email_report=False)
+        
+        if result["status"] == "success":
+            print("\n✅ Analytics flow completed successfully!")
+            print(f"\n📊 Results:")
+            print(f"  - Positions analyzed: {len(result.get('pnl_data', []))}")
+            print(f"  - Technical signals: {result.get('technical_signals', {})}")
+            print(f"  - Insights: {len(result.get('insights', {}).get('recommendations', []))}")
+        else:
+            print(f"\n❌ Error: {result.get('message')}")
