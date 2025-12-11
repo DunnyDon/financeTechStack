@@ -1,5 +1,18 @@
 <!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
 
+## Critical Development Guidelines
+
+### Package Management & Execution
+- **Always use `uv`** for package management and dependencies
+- Run Python code with `uv run python`
+- Run pytest with `uv run pytest` or `uv run --with pytest python -m pytest`
+- Never attempt to use `timeout` command (not available on macOS)
+
+### Code Organization
+- **Source code:** Place all production code in the `src/` folder
+- **Documentation:** Place all documentation in the `docs/` folder
+- **Clear & concise:** Keep documentation brief, focused, and actionable
+
 ## Setup Checklist
 
 - [x] Verify that the copilot-instructions.md file in the .github directory is created.

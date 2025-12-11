@@ -60,16 +60,24 @@ class FundamentalAnalyzer:
                 logger.warning(f"Could not find CIK for {ticker}")
                 return None
 
-            cik = company_data.get("cik")
+            cik = company_data.get("cik") if isinstance(company_data, dict) else company_data
             if not cik:
                 return None
 
-            # Fetch XBRL data
-            xbrl_data = parse_xbrl_fundamentals(ticker)
+            # Fetch XBRL data using the CIK
+            # Note: fetch_xbrl_document takes (cik, accession_number) but accession_number is not used
+            xbrl_data = fetch_xbrl_document(cik, cik)
+            
+            if not xbrl_data:
+                logger.warning(f"No XBRL data found for {ticker}")
+                return None
 
-            if xbrl_data:
-                self.fundamental_cache[ticker] = xbrl_data
-                return xbrl_data
+            # Parse the XBRL data
+            xbrl_parsed = parse_xbrl_fundamentals(xbrl_data, ticker)
+
+            if xbrl_parsed:
+                self.fundamental_cache[ticker] = xbrl_parsed
+                return xbrl_parsed
 
             return None
 

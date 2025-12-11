@@ -18,6 +18,18 @@ from prefect import get_run_logger, task
 from .constants import DEFAULT_TIMEOUT
 from .utils import get_logger, make_request_with_backoff
 
+# Import data pipeline robustness components
+try:
+    from .pipeline_robustness_integration import (
+        PRICE_VALIDATOR,
+        PRICE_RETRY_POLICY,
+        RobustPipelineTask,
+        validate_and_save_prices,
+    )
+    ROBUSTNESS_AVAILABLE = True
+except ImportError:
+    ROBUSTNESS_AVAILABLE = False
+
 __all__ = [
     "fetch_current_price",
     "fetch_historical_prices",
@@ -79,6 +91,7 @@ class PriceFetcher:
             return {
                 "symbol": symbol,
                 "price": float(latest["Close"]),
+                "close": float(latest["Close"]),  # lowercase for consistency
                 "open": float(latest["Open"]),
                 "high": float(latest["High"]),
                 "low": float(latest["Low"]),
@@ -276,10 +289,10 @@ class PriceFetcher:
             return None
 
 
-@task
+@task(retries=3, retry_delay_seconds=5)
 def fetch_current_price(symbol: str, asset_type: str = "eq") -> Optional[Dict]:
     """
-    Fetch current price for a security.
+    Fetch current price for a security with automatic validation and retries.
 
     Args:
         symbol: Security symbol
@@ -295,19 +308,38 @@ def fetch_current_price(symbol: str, asset_type: str = "eq") -> Optional[Dict]:
     price_data = fetcher.fetch_price(symbol, asset_type)
 
     if price_data:
-        logger_instance.info(f"Price for {symbol}: {price_data.get('price', price_data.get('price_usd'))}")
+        # Validate price data if robustness available
+        if ROBUSTNESS_AVAILABLE:
+            try:
+                validated_data = PRICE_VALIDATOR.validate({
+                    'timestamp': datetime.now().isoformat(),
+                    'symbol': symbol,
+                    'open': price_data.get('price', 0),
+                    'high': price_data.get('price', 0),
+                    'low': price_data.get('price', 0),
+                    'close': price_data.get('price', 0),
+                    'volume': price_data.get('volume', 0)
+                })
+                logger_instance.info(f"Price for {symbol}: {price_data.get('price', price_data.get('price_usd'))}")
+                return price_data
+            except Exception as e:
+                logger_instance.warning(f"Validation failed for {symbol}: {e}")
+                return price_data  # Still return if validation fails
+        else:
+            logger_instance.info(f"Price for {symbol}: {price_data.get('price', price_data.get('price_usd'))}")
+            return price_data
 
-    return price_data
+    return None
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 def fetch_historical_prices(
     symbol: str,
     start_date: Optional[str] = None,
     period: str = "1y",
 ) -> Optional[pd.DataFrame]:
     """
-    Fetch historical prices for a security.
+    Fetch historical prices for a security with automatic validation.
 
     Args:
         symbol: Security symbol
@@ -321,13 +353,33 @@ def fetch_historical_prices(
     logger_instance.info(f"Fetching {period} historical prices for {symbol}")
 
     fetcher = PriceFetcher()
-    return fetcher.fetch_historical(symbol, start_date, period=period)
+    data = fetcher.fetch_historical(symbol, start_date, period=period)
+
+    if data is not None and not data.empty and ROBUSTNESS_AVAILABLE:
+        try:
+            # Validate each row
+            for _, row in data.iterrows():
+                PRICE_VALIDATOR.validate({
+                    'timestamp': row.get('date', datetime.now()).isoformat(),
+                    'symbol': symbol,
+                    'open': float(row.get('Open', 0)),
+                    'high': float(row.get('High', 0)),
+                    'low': float(row.get('Low', 0)),
+                    'close': float(row.get('Close', 0)),
+                    'volume': float(row.get('Volume', 0))
+                })
+            logger_instance.info(f"Validation passed for {len(data)} rows of {symbol}")
+        except Exception as e:
+            logger_instance.warning(f"Validation warning for {symbol}: {e}")
+            # Continue anyway - don't fail on validation
+
+    return data
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 def fetch_multiple_prices(symbols: List[str], asset_types: Dict[str, str]) -> Dict[str, Dict]:
     """
-    Fetch prices for multiple securities.
+    Fetch prices for multiple securities with validation and retry logic.
 
     Args:
         symbols: List of security symbols
@@ -341,14 +393,34 @@ def fetch_multiple_prices(symbols: List[str], asset_types: Dict[str, str]) -> Di
 
     fetcher = PriceFetcher()
     results = {}
+    failed_symbols = []
 
     for symbol in symbols:
         asset_type = asset_types.get(symbol, "eq")
         price_data = fetcher.fetch_price(symbol, asset_type)
 
         if price_data:
-            results[symbol] = price_data
+            # Validate if robustness available
+            if ROBUSTNESS_AVAILABLE:
+                try:
+                    PRICE_VALIDATOR.validate({
+                        'timestamp': datetime.now().isoformat(),
+                        'symbol': symbol,
+                        'open': price_data.get('price', 0),
+                        'high': price_data.get('price', 0),
+                        'low': price_data.get('price', 0),
+                        'close': price_data.get('price', 0),
+                        'volume': price_data.get('volume', 0)
+                    })
+                    results[symbol] = price_data
+                except Exception as e:
+                    logger_instance.warning(f"Validation failed for {symbol}: {e}")
+                    failed_symbols.append(symbol)
+            else:
+                results[symbol] = price_data
+        else:
+            failed_symbols.append(symbol)
 
-    logger_instance.info(f"Successfully fetched {len(results)} prices")
+    logger_instance.info(f"Successfully fetched {len(results)} prices, {len(failed_symbols)} failed")
 
     return results

@@ -25,6 +25,17 @@ from prefect import get_run_logger, task
 from .constants import DEFAULT_OUTPUT_DIR
 from .utils import get_logger
 
+# Import data pipeline robustness components
+try:
+    from .pipeline_robustness_integration import (
+        PRICE_VALIDATOR,
+        TECHNICAL_VALIDATOR,
+        FUNDAMENTAL_VALIDATOR,
+    )
+    ROBUSTNESS_AVAILABLE = True
+except ImportError:
+    ROBUSTNESS_AVAILABLE = False
+
 __all__ = [
     "ParquetDB",
     "upsert_prices",
@@ -323,9 +334,32 @@ class ParquetDB:
         return rows_inserted, rows_updated
 
     def upsert_prices(self, data: pd.DataFrame) -> Tuple[int, int]:
-        """Upsert price data."""
+        """Upsert price data with validation."""
         if 'timestamp' not in data.columns:
             raise ValueError("Data must contain 'timestamp' column")
+        
+        # Validate data if robustness available
+        if ROBUSTNESS_AVAILABLE:
+            logger.debug(f"Validating {len(data)} price records before upsert")
+            invalid_count = 0
+            for idx, row in data.iterrows():
+                try:
+                    PRICE_VALIDATOR.validate({
+                        'timestamp': str(row.get('timestamp', datetime.now())),
+                        'symbol': row.get('symbol', 'UNKNOWN'),
+                        'open': float(row.get('open', 0)),
+                        'high': float(row.get('high', 0)),
+                        'low': float(row.get('low', 0)),
+                        'close': float(row.get('close', 0)),
+                        'volume': float(row.get('volume', 0))
+                    })
+                except Exception as e:
+                    invalid_count += 1
+                    logger.warning(f"Price validation failed for row {idx}: {e}")
+            
+            if invalid_count > 0:
+                logger.warning(f"Price validation: {invalid_count}/{len(data)} records failed")
+        
         return self._upsert_partition(
             'prices', data, 'timestamp',
             key_cols=['symbol', 'timestamp'],
@@ -353,9 +387,31 @@ class ParquetDB:
         )
 
     def upsert_technical_analysis(self, data: pd.DataFrame) -> Tuple[int, int]:
-        """Upsert technical analysis data."""
+        """Upsert technical analysis data with validation."""
         if 'timestamp' not in data.columns:
             raise ValueError("Data must contain 'timestamp' column")
+        
+        # Validate data if robustness available
+        if ROBUSTNESS_AVAILABLE:
+            logger.debug(f"Validating {len(data)} technical records before upsert")
+            invalid_count = 0
+            for idx, row in data.iterrows():
+                try:
+                    TECHNICAL_VALIDATOR.validate({
+                        'timestamp': str(row.get('timestamp', datetime.now())),
+                        'symbol': row.get('symbol', 'UNKNOWN'),
+                        'rsi': float(row.get('rsi', 50)),
+                        'macd': float(row.get('macd', 0)),
+                        'bollinger_upper': float(row.get('bollinger_upper', 0)),
+                        'bollinger_lower': float(row.get('bollinger_lower', 0))
+                    })
+                except Exception as e:
+                    invalid_count += 1
+                    logger.warning(f"Technical validation failed for row {idx}: {e}")
+            
+            if invalid_count > 0:
+                logger.warning(f"Technical validation: {invalid_count}/{len(data)} records failed")
+        
         return self._upsert_partition(
             'technical_analysis', data, 'timestamp',
             key_cols=['symbol', 'frequency', 'timestamp'],
@@ -363,9 +419,30 @@ class ParquetDB:
         )
 
     def upsert_fundamental_analysis(self, data: pd.DataFrame) -> Tuple[int, int]:
-        """Upsert fundamental analysis data."""
+        """Upsert fundamental analysis data with validation."""
         if 'timestamp' not in data.columns:
             raise ValueError("Data must contain 'timestamp' column")
+        
+        # Validate data if robustness available
+        if ROBUSTNESS_AVAILABLE:
+            logger.debug(f"Validating {len(data)} fundamental records before upsert")
+            invalid_count = 0
+            for idx, row in data.iterrows():
+                try:
+                    FUNDAMENTAL_VALIDATOR.validate({
+                        'timestamp': str(row.get('timestamp', datetime.now())),
+                        'symbol': row.get('symbol', 'UNKNOWN'),
+                        'pe_ratio': float(row.get('pe_ratio', 0)),
+                        'dividend_yield': float(row.get('dividend_yield', 0)),
+                        'market_cap': float(row.get('market_cap', 0))
+                    })
+                except Exception as e:
+                    invalid_count += 1
+                    logger.warning(f"Fundamental validation failed for row {idx}: {e}")
+            
+            if invalid_count > 0:
+                logger.warning(f"Fundamental validation: {invalid_count}/{len(data)} records failed")
+        
         return self._upsert_partition(
             'fundamental_analysis', data, 'timestamp',
             key_cols=['symbol', 'timestamp'],

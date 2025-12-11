@@ -22,6 +22,7 @@ from .portfolio_analytics import PortfolioAnalytics
 from .portfolio_holdings import Holdings
 from .portfolio_prices import PriceFetcher
 from .portfolio_technical import TechnicalAnalyzer
+from .quick_wins_flows import quick_wins_analytics_flow
 from .utils import get_logger
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "send_report_email_flow",
     "generate_technical_insights",
     "generate_fundamental_insights",
+    "quick_wins_analytics_flow",
 ]
 
 logger = get_logger(__name__)
@@ -679,6 +681,11 @@ def enhanced_analytics_flow(
             except Exception as e:
                 flow_logger.warning(f"Could not save portfolio weights: {e}")
 
+        # Calculate quick wins analytics
+        flow_logger.info("Calculating quick wins analytics...")
+        quick_wins_result = quick_wins_analytics_flow(prices_dict, holdings_df)
+        flow_logger.info(f"Quick wins analytics: {quick_wins_result.get('status', 'unknown')}")
+
         # Generate report
         report_result = generate_analytics_report(
             pnl_data=pnl_data,
@@ -694,6 +701,7 @@ def enhanced_analytics_flow(
             "technical_signals": technical_signals,
             "fundamental_metrics": fundamental_metrics,
             "insights": insights,
+            "quick_wins": quick_wins_result,
             "report": report_result,
         }
 

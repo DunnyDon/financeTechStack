@@ -1,18 +1,168 @@
-# Finance TechStack
+# Finance TechStack - Repository Organization
 
 A production-ready Python application for portfolio analytics with real-time financial data aggregation.
 
-## Features
+## 📁 Directory Structure
+
+```
+TechStack/
+├── app.py                          # Main Streamlit dashboard
+├── README.md                       # This file
+├── pyproject.toml                  # Project dependencies
+├── data/
+│   ├── config.csv                  # Configuration (email, API keys)
+│   ├── config.csv.template         # Configuration template
+│   └── holdings.csv                # Portfolio holdings
+├── db/
+│   ├── prices/                     # Stock/ETF prices (Parquet)
+│   ├── technical_analysis/         # Technical indicators (Parquet)
+│   ├── fundamental_analysis/       # Fundamental metrics (Parquet)
+│   ├── sec_filings/                # SEC EDGAR data (Parquet)
+│   ├── xbrl_filings/               # XBRL data (Parquet)
+│   ├── fx_rates/                   # Foreign exchange rates (Parquet)
+│   ├── cache/                      # Runtime caching
+│   └── backtesting/                # Historical simulation data
+├── docs/
+│   ├── INDEX.md                    # Documentation index & navigation
+│   ├── FUTURE_WORK.md              # Roadmap and planned features
+│   ├── architecture/               # System design documentation
+│   │   ├── ARCHITECTURE_OVERVIEW.md
+│   │   ├── BACKTESTING_ENGINE_ARCHITECTURE.md
+│   │   ├── BACKTESTING_FRAMEWORK_GUIDE.md
+│   │   ├── DASK_BACKFILL_DOCUMENTATION.md
+│   │   ├── DASK_BEST_PRACTICES.md
+│   │   └── PARQUETDB_INTEGRATION.md
+│   ├── guides/                     # User guides & tutorials
+│   │   ├── QUICK_START.md
+│   │   ├── INSTALL.md
+│   │   ├── USAGE.md
+│   │   ├── DASHBOARD_GUIDE.md
+│   │   ├── ADVANCED_ANALYTICS.md
+│   │   ├── BACKTESTING_ADVANCED.md
+│   │   ├── TAX_OPTIMIZATION.md
+│   │   ├── CRYPTO_ANALYTICS.md
+│   │   ├── DATA_PIPELINE_ROBUSTNESS.md
+│   │   ├── OBSERVABILITY.md
+│   │   └── OPTIONS_STRATEGY_AUTOMATION.md
+│   ├── integration/                # System integration documentation
+│   │   ├── PREFECT_INTEGRATION_INDEX.md
+│   │   ├── PREFECT_QUICK_REFERENCE.md
+│   │   ├── PREFECT_NEWS_INTEGRATION.md
+│   │   ├── NEWS_ANALYSIS.md
+│   │   └── QUICK_WINS_INTEGRATION.md
+│   └── reference/                  # Technical references
+│       ├── API.md
+│       ├── DEPLOY.md
+│       ├── TESTING.md
+│       └── VWRL_FAILURE_ANALYSIS.md
+├── src/                            # Application code
+│   ├── __init__.py
+│   ├── analytics_flows.py          # Prefect analytics flows
+│   ├── analytics_report.py         # Report generation
+│   ├── advanced_analytics_flows.py # Advanced analytics orchestration
+│   ├── cache.py                    # In-memory caching
+│   ├── config.py                   # Configuration management
+│   ├── constants.py                # Application constants
+│   ├── dask_*.py                   # Dask parallelization flows
+│   ├── exceptions.py               # Custom exceptions
+│   ├── fixed_income_analysis.py    # Bond/fixed income metrics
+│   ├── fx_rates.py                 # Foreign exchange data
+│   ├── news_analysis.py            # NLP sentiment analysis
+│   ├── news_analysis_streamlit.py  # Streamlit news UI
+│   ├── news_flows.py               # News analysis workflows
+│   ├── options_analysis.py         # Options pricing & Greeks
+│   ├── parquet_db.py               # ParquetDB abstraction layer
+│   ├── portfolio_*.py              # Portfolio analytics modules
+│   │   ├── portfolio_analytics.py
+│   │   ├── portfolio_analytics_advanced_flow.py
+│   │   ├── portfolio_flows.py      # Main Prefect flows
+│   │   ├── portfolio_fundamentals.py
+│   │   ├── portfolio_holdings.py
+│   │   ├── portfolio_optimization.py
+│   │   ├── portfolio_prices.py
+│   │   ├── portfolio_prices_streamlit.py
+│   │   ├── portfolio_risk.py
+│   │   ├── portfolio_technical.py
+│   │   └── portfolio_technical_streamlit.py
+│   ├── quick_wins_analytics.py     # Quick trading signals
+│   ├── quick_wins_analytics_streamlit.py
+│   ├── quick_wins_flows.py         # Quick wins workflows
+│   ├── utils.py                    # Utility functions
+│   ├── xbrl.py                     # XBRL data extraction
+│   └── backtesting/                # Backtesting framework
+│       ├── __init__.py
+│       ├── backtesting_engine.py
+│       └── strategies/
+├── scripts/                        # Standalone utilities & scripts
+│   ├── run_dashboard.sh            # Start dashboard
+│   ├── setup_dashboard.sh          # Initial setup
+│   ├── docker-test.sh              # Docker testing
+│   ├── backfill_historical_data.py # Historical data backfill with Dask
+│   ├── backfill_performance_demo.py# Backfill performance benchmark
+│   ├── check_historical_data.py    # Data collection status
+│   └── prefect_manager.py          # Prefect server management
+├── tests/                          # Unit & integration tests
+│   ├── __init__.py
+│   ├── test_advanced_analytics.py
+│   ├── test_analytics_report.py
+│   ├── test_backtesting_setup.py   # Backtesting setup verification
+│   ├── test_cache.py
+│   ├── test_dask_analysis_flows.py
+│   ├── test_fx_rates.py
+│   ├── test_integration.py         # End-to-end integration tests
+│   ├── test_news_analysis.py
+│   ├── test_parquet_db.py
+│   ├── test_portfolio_*.py         # Portfolio component tests
+│   ├── test_price_fetching.py
+│   ├── test_quick_wins_new.py
+│   ├── test_xbrl.py
+│   ├── verify_news_integration.py  # News integration verification
+│   └── benchmarks/                 # Performance benchmarks
+├── examples/                       # Usage examples
+│   ├── examples_backtesting.py
+│   ├── news_analysis_example.py
+│   └── run_backtesting_examples.py
+├── deploy/                         # Deployment configurations
+│   ├── aws-ecs-deploy.sh
+│   ├── ecs-task-definition.json
+│   ├── kubernetes/
+│   └── terraform/
+├── docker/                         # Docker configurations
+│   ├── Dockerfile
+│   ├── Dockerfile.dask-py313
+│   ├── Dockerfile.prefect-worker
+│   ├── docker-compose.yml
+│   └── docker-compose.dask.yml
+├── archive/                        # Old/deprecated versions
+│   ├── app_old.py
+│   └── app_csv_version.py
+└── .github/
+    └── copilot-instructions.md     # GitHub Copilot customization
+```
+
+## 🚀 Features
 
 **Core Functionality:**
-- Portfolio position tracking with multi-broker support (DEGIRO, REVOLUT, Kraken)
-- Real-time P&L calculation and portfolio metrics
-- Technical analysis with MACD, RSI, Bollinger Bands, and moving averages
+- Portfolio position tracking with multi-broker support (DEGIRO, REVOLUT, Kraken, TD Canada, Sunlife, Bank of Ireland)
+- Real-time P&L calculation and portfolio metrics (Jensen's Alpha, Beta, Sharpe Ratio, Volatility)
+- Technical analysis with MACD, RSI, Bollinger Bands, moving averages
 - Fundamental metrics aggregation (P/E, ROE, ROA, dividend yields)
 - SEC EDGAR filings & XBRL data integration
 - Multi-source price fetching (stocks, ETFs, crypto, commodities)
-- Currency conversion (FX rates)
+- Currency conversion and FX analytics with hedging strategies
 - **News scraping & NLP sentiment analysis** - Analyzes major world headlines to assess portfolio impact
+- **Comprehensive FX Analytics** - Currency exposure analysis, risk metrics, hedging strategies, technical analysis, pair analytics
+
+**Advanced Analytics (Completed):**
+- **FX Analytics & Hedging** (NEW): 
+  - Currency exposure mapping across all asset classes (equities, funds, commodities, crypto, cash, fixed-income, retirement)
+  - FX Risk Metrics with VaR calculation at 90/95/99% confidence
+  - Currency correlation matrix with pair-specific analysis
+  - 5 comprehensive tabs: Exposure, Risk Metrics, Hedging Strategies, Technical & Sentiment, Pair Analytics
+- **Enhanced Backtesting**: Parameter optimization via grid search, Monte Carlo simulation (1000+ iterations), drawdown analysis with recovery time, Sharpe/Sortino/Calmar ratios, trade-by-trade P&L
+- **Advanced News Analytics**: Ticker mention extraction from article text, sector sentiment aggregation, price correlation analysis, weighted sentiment scoring with source quality weighting
+- **Tax Loss Harvesting**: Unrealized loss identification by holding period, wash sale detection with risk scoring, replacement security suggestions by sector, tax savings calculation, CSV/Parquet reporting
+- **Crypto Advanced Analytics**: On-chain metrics (whale watch, exchange flows, active addresses), market structure analysis (liquidity scoring, orderbook depth, volume profile), cross-asset correlation matrices, volatility term structure with mean reversion signals, portfolio VaR/CVaR calculation
 
 **Automation & Delivery:**
 - Automated HTML email reports with comprehensive analytics
@@ -24,8 +174,11 @@ A production-ready Python application for portfolio analytics with real-time fin
 - Apache Parquet storage with Snappy compression
 - Efficient data aggregation and querying
 - Rate limiting for API compliance
+- **Smart historical data backfill with Dask parallelization** (4-6x faster)
+- **Market holiday detection** for international exchanges (Euronext, etc.)
+- Intelligent gap detection and filling for missing data
 
-## Quick Start
+## 📋 Quick Start
 
 **Requirements:** Python 3.13+, `uv` package manager
 
@@ -33,131 +186,230 @@ A production-ready Python application for portfolio analytics with real-time fin
 git clone <repo>
 cd TechStack
 uv sync
-cp config.csv.template config.csv
-# Edit config.csv with your email and API keys
+cp data/config.csv.template data/config.csv
+# Edit data/config.csv with your email and API keys
 ```
 
-## Main Workflows
+## 🎯 Main Workflows
 
-### 1. Portfolio Analytics & Email
-Comprehensive portfolio analysis with email delivery:
+### 1. Portfolio Analytics Dashboard
+Interactive Streamlit web interface:
+```bash
+uv run streamlit run app.py
+# Opens at http://localhost:8501
+```
+**Dashboard Tabs:**
+- **Home**: Portfolio overview, benchmark comparison vs S&P 500, performance visualization
+- **Portfolio**: Position analysis, technical indicators, fundamental metrics, risk-adjusted performance
+- **Advanced Analytics**: Multi-asset correlation, portfolio optimization, risk analysis
+- **Backtesting**: Strategy backtesting with parameter optimization, Monte Carlo simulation, Sharpe/Sortino/Calmar ratios, drawdown analysis, educational guides
+- **Options Strategy**: Strategy generation (Iron Condors, Strangles, Straddles, Covered Calls), Greeks analysis, hedge recommendations, market condition assessment
+- **Tax Optimization**: Tax loss harvesting, wash sale detection, replacement suggestions, real portfolio holdings integration
+- **Crypto Analytics**: Portfolio weights, on-chain metrics, market structure analysis, portfolio risk metrics (VaR, Expected Shortfall)
+- **FX Analytics** (NEW): 
+  - Currency Exposure Analysis (all asset classes: equities, funds, commodities, crypto, cash, fixed-income, retirement)
+  - FX Risk Metrics (VaR, currency correlation, pair volatility)
+  - Hedging Strategies (forward contracts, put options, currency swaps, no hedge comparison)
+  - Technical & Sentiment Analysis (30+ currency pair technical levels, RSI, trends, market sentiment)
+  - Pair Analytics (correlation patterns, volatility clustering, interest rate carry trades, currency strength indexing)
+- **Advanced News**: Ticker extraction, weighted sentiment analysis, price correlation, news impact assessment
+- **Email Reports**: Scheduled report generation and delivery
+- **Help**: Documentation and FAQ
+
+### 2. Portfolio Analytics with Email
 ```bash
 uv run python -c "from src.analytics_flows import enhanced_analytics_flow; enhanced_analytics_flow(send_email_report=True)"
 ```
 Includes: Position P&L, technical indicators, fundamental metrics, trading signals
 
-### 2. News-Informed Analytics
-Portfolio analytics with news sentiment impact assessment:
+### 3. News-Informed Analytics
 ```bash
 uv run python -c "from src.news_flows import news_informed_analytics_flow; result = news_informed_analytics_flow(send_email_report=True); print(result['news_analysis']['report'])"
 ```
-Analyzes headlines from 12+ news sources, identifies sector/region impact, classifies by timeframe
+Analyzes headlines from 12+ news sources, identifies sector/region impact
 
-### 3. Financial Data Aggregation
-Fetch and aggregate prices, SEC filings, fundamentals, and FX rates:
+### 4. Historical Data Backfill (with Dask)
 ```bash
-uv run python -c "from src.portfolio_flows import aggregate_financial_data_flow; aggregate_financial_data_flow()"
-```
-Output: Parquet file with complete financial dataset
+# Backfill all tickers with technical analysis calculation
+uv run python scripts/backfill_historical_data.py
 
-### 4. Portfolio Analysis
-Calculate technical indicators and portfolio metrics:
+# Specific tickers and workers
+uv run python scripts/backfill_historical_data.py --tickers MSFT,AAPL,TSLA --workers 4
+
+# Check progress
+uv run python scripts/check_historical_data.py
+
+# Benchmark performance
+uv run python scripts/backfill_performance_demo.py
+```
+
+### 5. Prefect Workflow Management
 ```bash
-uv run python -c "from src.portfolio_flows import portfolio_analysis_flow; portfolio_analysis_flow()"
+# Start server and deploy flows
+uv run python scripts/prefect_manager.py start
+
+# Check status
+uv run python scripts/prefect_manager.py verify
+
+# View flows at http://localhost:4200
 ```
 
-## Configuration
+## ⚙️ Configuration
 
-Create `config.csv` from template and set:
+Create `data/config.csv` from template and set:
 
 ```csv
-report_email,your-email@example.com
-sender_email,gmail@gmail.com
-sender_password,your-app-password
-smtp_host,smtp.gmail.com
-smtp_port,587
-alpha_vantage_key,your-key-optional
+email_sender,your-email@gmail.com
+email_password,your-app-password
+email_recipients,recipient@example.com
+send_to_emails,recipient@example.com
+finnhub_key,your-finnhub-api-key
+alpha_vantage_key,your-alpha-vantage-key
+newsapi_key,your-newsapi-key
 ```
 
-See [docs/INSTALL.md](docs/INSTALL.md) for detailed setup instructions.
+For email, use Gmail's App Passwords (2FA required).
 
-## Documentation
-
-- **[INSTALL.md](docs/INSTALL.md)** - Setup and environment configuration
-- **[USAGE.md](docs/USAGE.md)** - Workflow examples and usage patterns
-- **[API.md](docs/API.md)** - Complete API reference
-- **[NEWS_ANALYSIS.md](docs/NEWS_ANALYSIS.md)** - News scraping and sentiment analysis
-- **[DEPLOY.md](docs/DEPLOY.md)** - Docker, AWS ECS, Kubernetes deployment
-- **[TESTING.md](docs/TESTING.md)** - Testing guide
-- **[INDEX.md](docs/INDEX.md)** - Documentation navigation
-
-## Project Structure
-
-```
-src/
-├── analytics_flows.py           # Portfolio analytics orchestration
-├── portfolio_flows.py           # Financial data aggregation workflows
-├── portfolio_holdings.py        # Portfolio position management
-├── portfolio_prices.py          # Multi-source price fetching
-├── portfolio_technical.py       # Technical indicator calculations
-├── portfolio_fundamentals.py    # Fundamental metrics aggregation
-├── portfolio_analytics.py       # P&L and portfolio metrics
-├── xbrl.py                      # SEC XBRL data parsing
-├── fx_rates.py                  # Currency conversion
-├── parquet_db.py                # Data storage abstraction
-├── cache.py                     # Caching layer
-└── config.py                    # Configuration management
-
-tests/
-├── test_portfolio_flows.py
-├── test_portfolio_analytics.py
-├── test_portfolio_prices.py
-├── test_portfolio_technical.py
-├── test_portfolio_fundamentals.py
-├── test_xbrl.py
-├── test_cache.py
-├── test_parquet_db.py
-├── test_fx_rates.py
-├── test_integration.py
-└── test_portfolio_integration.py
-```
-
-## Documentation
-
-See [docs/INDEX.md](docs/INDEX.md) for complete documentation including:
-- **[Getting Started](docs/INSTALL.md)** - Installation and setup
-- **[Usage Guide](docs/USAGE.md)** - How to run workflows
-- **[API Reference](docs/API.md)** - Function documentation
-- **[Testing Guide](docs/TESTING.md)** - Running tests
-- **[Deployment](docs/DEPLOY.md)** - Production deployment
-- **[Dask Parallelization](docs/phase1/EXPANSION_GUIDE.md)** - ⭐ NEW Phase 1 expansion (3-5x speedup)
-
-**Phase 1: Parallel Processing** (✅ COMPLETE)
-- Real 4.8x speedup with technical/news/pricing parallelization
-- See [Phase 1 Expansion](docs/phase1/PHASE1_EXPANSION_COMPLETE.md) for details
-
-## Development
+## 🧪 Testing
 
 ```bash
-# Setup
-uv sync
+# Run all tests
+uv run pytest tests/
 
-# Run tests
-uv run pytest tests/ -v
+# Run specific test file
+uv run pytest tests/test_portfolio_analytics.py
 
-# Run with coverage
+# With coverage
 uv run pytest tests/ --cov=src --cov-report=html
 
-# Format code
-uv run black src/ tests/
-uv run ruff check --fix src/ tests/
-
-# Type checking
-uv run mypy src/
+# Run only integration tests
+uv run pytest tests/test_integration.py -v
 ```
 
-For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+**Test Coverage:**
+- 21 test files covering all major components
+- Unit tests for data processing, analytics, caching
+- Integration tests for end-to-end workflows
+- Backtesting framework verification
 
-## License
+## 📚 Documentation
 
-MIT
+**Quick Navigation:**
+- **[docs/INDEX.md](docs/INDEX.md)** - Complete documentation index (start here!)
+- **[docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)** - Roadmap and planned features
+- **[FEATURE_SUMMARY_DEC2025.md](FEATURE_SUMMARY_DEC2025.md)** - Current feature inventory
+
+**Documentation Structure:**
+
+| Category | Purpose | Examples |
+|----------|---------|----------|
+| **[docs/guides/](docs/guides/)** | User & implementation guides | Quick Start, Dashboard Guide, Advanced Analytics |
+| **[docs/architecture/](docs/architecture/)** | System design & architecture | Backtesting Engine, Dask Implementation, ParquetDB |
+| **[docs/integration/](docs/integration/)** | Workflow & system integration | Prefect Setup, News Analysis, Quick Wins |
+| **[docs/reference/](docs/reference/)** | Technical references & troubleshooting | API, Deployment, Testing, Troubleshooting |
+
+**Archived Documentation:**
+Old development phase documents are preserved in `archive/docs/` for historical reference.
+
+## 🏗️ Technology Stack
+
+**Backend:**
+- Python 3.13
+- Prefect 3.x (workflow orchestration)
+- Dask (parallelization)
+- Pandas & NumPy (data manipulation)
+- PyArrow (Parquet)
+
+**Frontend:**
+- Streamlit (interactive UI)
+- Plotly (interactive charts)
+- Custom CSS styling
+
+**Data Storage:**
+- Apache Parquet (columnar storage)
+- Snappy compression
+- Partitioned by timestamp
+
+**External APIs:**
+- Finnhub (real-time prices)
+- Alpha Vantage (historical prices)
+- SEC EDGAR API (company filings)
+- NewsAPI (news aggregation)
+- Open-Meteo (FX rates)
+
+## 🚀 Performance
+
+**Data Backfill (Dask Parallelization):**
+- Sequential: ~3 seconds per 6 tickers
+- Parallel (4 workers): ~0.5 seconds per 6 tickers
+- **6x performance improvement**
+
+**Technical Analysis:**
+- 252-day dataset: <2 seconds calculation
+- All indicators cached
+- Per-symbol latest filtering
+
+**Dashboard:**
+- Page load: <2 seconds
+- Data refresh: 60-second TTL cache
+- Supports 50+ holdings
+
+## 📦 Dependencies
+
+**Core:**
+- prefect>=3.6.4
+- pandas>=2.0.0
+- numpy>=1.24.0
+- pyarrow>=14.0.0
+- streamlit>=1.28.0
+
+**Analytics:**
+- scikit-learn>=1.3.0
+- scipy>=1.11.0
+- ta-lib (technical analysis)
+
+**Data:**
+- requests>=2.31.0
+- beautifulsoup4>=4.12.0
+- lxml>=4.9.0
+
+**Deployment:**
+- Docker
+- AWS ECS
+- Kubernetes (optional)
+
+## 🔄 Workflow Overview
+
+```
+Holdings (CSV) → Price Fetcher → ParquetDB (Prices)
+                                    ↓
+                         Technical Analysis → ParquetDB (Tech)
+                                    ↓
+                         Fundamental Analysis → ParquetDB (Fund)
+                                    ↓
+                         Portfolio Analytics → Dashboard / Email
+                                    ↓
+                         News Sentiment Analysis → Impact Report
+```
+
+## 📝 Getting Started
+
+1. **New to the project?** Start with [docs/guides/QUICK_START.md](docs/guides/QUICK_START.md)
+2. **Want to understand the architecture?** See [docs/architecture/ARCHITECTURE_OVERVIEW.md](docs/architecture/ARCHITECTURE_OVERVIEW.md)
+3. **Looking for the roadmap?** Check [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)
+4. **Full documentation index?** Visit [docs/INDEX.md](docs/INDEX.md)
+
+## 🤝 Contributing
+
+1. Ensure code follows project structure
+2. Add tests for new functionality
+3. Update documentation in `docs/`
+4. Run full test suite before committing
+5. Use `uv` for dependency management
+
+---
+
+**Last Updated:** December 11, 2025  
+**Repository:** Finance TechStack  
+**Main Branch:** main  
+**Documentation:** [docs/INDEX.md](docs/INDEX.md)

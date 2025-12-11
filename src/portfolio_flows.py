@@ -556,11 +556,16 @@ def aggregate_financial_data_flow(
 
         cik = fetch_sec_cik_task(ticker)
         if cik:
-            filing_info = fetch_sec_filings_task(cik, ticker)
-            xbrl_data = parse_xbrl_data_task(cik, ticker, filing_info)
+            try:
+                filing_info = fetch_sec_filings_task(cik, ticker)
+                xbrl_data = parse_xbrl_data_task(cik, ticker, filing_info)
 
-            if xbrl_data:
-                sec_data.append(xbrl_data)
+                if xbrl_data:
+                    sec_data.append(xbrl_data)
+            except Exception as e:
+                # Some securities (crypto, ETFs, international) may not have SEC filings
+                logger_instance.warning("Could not fetch SEC data for %s (CIK: %s): %s", ticker, cik, str(e)[:100])
+                # Continue processing other tickers instead of failing
 
     # Fetch pricing data
     pricing_data = [fetch_pricing_data_task(ticker) for ticker in tickers]

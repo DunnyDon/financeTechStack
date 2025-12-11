@@ -284,59 +284,79 @@ def parse_xbrl_fundamentals(xbrl_data: Optional[dict], ticker: str) -> dict:
 
     try:
         facts = xbrl_data.get("facts", {})
+        
+        # Try US GAAP first, then IFRS
         us_gaap = facts.get("us-gaap", {})
+        ifrs = facts.get("ifrs-full", {})
+        
+        # Determine which accounting standard to use
+        accounting_data = us_gaap if us_gaap else ifrs
+        is_ifrs = bool(not us_gaap and ifrs)
+        
+        if not accounting_data:
+            logger_instance.warning(f"No accounting data (us-gaap or ifrs-full) found for {ticker}")
+            return fundamentals
 
-        # Extract revenue
-        if "Revenues" in us_gaap:
-            revenue_data = us_gaap["Revenues"].get("units", {}).get("USD", [])
-            if revenue_data:
-                # Get the most recent value
-                latest = max(revenue_data, key=lambda x: x.get("filed", ""))
-                fundamentals["revenue"] = safe_float_conversion(latest.get("val"))
+        # Helper function to extract value from accounting data
+        def get_latest_value(field_name, preferred_currencies=None):
+            """Get the most recent value for a field, trying multiple currencies."""
+            if preferred_currencies is None:
+                preferred_currencies = ["USD", "EUR", "GBP", "JPY"]
+            
+            if field_name not in accounting_data:
+                return None
+            
+            field_info = accounting_data[field_name]
+            units = field_info.get("units", {})
+            
+            # Try preferred currencies first
+            for currency in preferred_currencies:
+                field_data = units.get(currency, [])
+                if field_data:
+                    try:
+                        # Get the most recent value by filed date
+                        latest = max(field_data, key=lambda x: x.get("filed", ""))
+                        return safe_float_conversion(latest.get("val"))
+                    except (ValueError, KeyError):
+                        continue
+            
+            # If no preferred currency found, try any available currency
+            for currency, field_data in units.items():
+                if field_data:
+                    try:
+                        latest = max(field_data, key=lambda x: x.get("filed", ""))
+                        return safe_float_conversion(latest.get("val"))
+                    except (ValueError, KeyError):
+                        continue
+            
+            return None
 
-        # Extract net income
-        if "NetIncomeLoss" in us_gaap:
-            income_data = us_gaap["NetIncomeLoss"].get("units", {}).get("USD", [])
-            if income_data:
-                latest = max(income_data, key=lambda x: x.get("filed", ""))
-                fundamentals["net_income"] = safe_float_conversion(latest.get("val"))
+        # Extract revenue (US GAAP: Revenues, IFRS: Revenue)
+        revenue_field = "Revenues" if not is_ifrs else "Revenue"
+        fundamentals["revenue"] = get_latest_value(revenue_field)
+
+        # Extract net income (US GAAP: NetIncomeLoss, IFRS: ProfitLoss)
+        income_field = "NetIncomeLoss" if not is_ifrs else "ProfitLoss"
+        fundamentals["net_income"] = get_latest_value(income_field)
 
         # Extract total assets
-        if "Assets" in us_gaap:
-            assets_data = us_gaap["Assets"].get("units", {}).get("USD", [])
-            if assets_data:
-                latest = max(assets_data, key=lambda x: x.get("filed", ""))
-                fundamentals["total_assets"] = safe_float_conversion(latest.get("val"))
+        fundamentals["total_assets"] = get_latest_value("Assets")
 
         # Extract total liabilities
-        if "Liabilities" in us_gaap:
-            liabilities_data = us_gaap["Liabilities"].get("units", {}).get("USD", [])
-            if liabilities_data:
-                latest = max(liabilities_data, key=lambda x: x.get("filed", ""))
-                fundamentals["total_liabilities"] = safe_float_conversion(latest.get("val"))
+        fundamentals["total_liabilities"] = get_latest_value("Liabilities")
 
         # Extract shareholders' equity
-        for equity_tag in ["StockholdersEquity", "ShareholdersEquity"]:
-            if equity_tag in us_gaap:
-                equity_data = us_gaap[equity_tag].get("units", {}).get("USD", [])
-                if equity_data:
-                    latest = max(equity_data, key=lambda x: x.get("filed", ""))
-                    fundamentals["shareholders_equity"] = safe_float_conversion(latest.get("val"))
-                    break
+        for equity_tag in ["StockholdersEquity", "ShareholdersEquity", "EquityAttributableToOwnersOfParent"]:
+            equity_value = get_latest_value(equity_tag)
+            if equity_value:
+                fundamentals["shareholders_equity"] = equity_value
+                break
 
         # Extract current assets
-        if "CurrentAssets" in us_gaap:
-            current_assets_data = us_gaap["CurrentAssets"].get("units", {}).get("USD", [])
-            if current_assets_data:
-                latest = max(current_assets_data, key=lambda x: x.get("filed", ""))
-                fundamentals["current_assets"] = safe_float_conversion(latest.get("val"))
+        fundamentals["current_assets"] = get_latest_value("CurrentAssets")
 
         # Extract current liabilities
-        if "CurrentLiabilities" in us_gaap:
-            current_liab_data = us_gaap["CurrentLiabilities"].get("units", {}).get("USD", [])
-            if current_liab_data:
-                latest = max(current_liab_data, key=lambda x: x.get("filed", ""))
-                fundamentals["current_liabilities"] = safe_float_conversion(latest.get("val"))
+        fundamentals["current_liabilities"] = get_latest_value("CurrentLiabilities")
 
         # Calculate derived metrics
         if fundamentals["total_assets"] and fundamentals["total_liabilities"]:

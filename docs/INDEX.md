@@ -1,161 +1,256 @@
-# Documentation Index
+# Documentation Index & Guide
 
-Central hub for all Finance TechStack documentation.
+Navigate Finance TechStack documentation efficiently.
 
-## 🚀 Quick Start (5 minutes)
+---
 
-1. **[README](../README.md)** - Main project overview
-2. **[Installation](INSTALL.md)** - Setup environment and config
-3. **[Usage](USAGE.md)** - Run your first workflow
+## 📚 Quick Navigation by Task
 
-## 📚 Core Documentation
+| I want to... | See | Time |
+|---|---|---|
+| **Get started quickly** | [Quick Start](guides/QUICK_START.md) | 5 min |
+| **Understand the system** | [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md) | 10 min |
+| **See core workflows** | [Usage Guide](guides/USAGE.md) | 15 min |
+| **Set up dashboard** | [Install](guides/INSTALL.md) | 10 min |
+| **Use dashboard features** | [Dashboard Guide](guides/DASHBOARD_GUIDE.md) | 20 min |
+| **Advanced analytics** | [Advanced Analytics](guides/ADVANCED_ANALYTICS.md) | 20 min |
+| **Explore API** | [API Reference](reference/API.md) | 15 min |
+| **Test the system** | [Testing](reference/TESTING.md) | 10 min |
+| **Deploy to production** | [Deploy](reference/DEPLOY.md) | 30 min |
+| **Understand Prefect** | [Prefect Integration](integration/PREFECT_INTEGRATION_INDEX.md) | 15 min |
+| **Troubleshoot** | [Failure Analysis](reference/VWRL_FAILURE_ANALYSIS.md) | 10 min |
+| **See roadmap** | [Future Work](FUTURE_WORK.md) | 15 min |
 
-### Development
-- **[API Reference](API.md)** - Complete API documentation
-- **[Testing Guide](TESTING.md)** - Run and write tests
-- **[News Analysis](NEWS_ANALYSIS.md)** - News sentiment feature
+---
 
-### Deployment
-- **[Deployment Guide](DEPLOY.md)** - Docker, AWS ECS, Kubernetes
+## 📖 Documentation by Category
 
-## 🚀 Dask & Parallel Processing
+### Getting Started (30 min)
+1. **[Quick Start](guides/QUICK_START.md)** - 5 min
+   - 30-second setup
+   - Essential workflows
+   - Configuration basics
 
-### Phase 1 - Foundation Setup
-- **[Infrastructure Setup](infrastructure/INFRASTRUCTURE_SUMMARY.md)** - Overview of Prefect + Dask
-- **[Detailed Setup](infrastructure/INFRASTRUCTURE_PREFECT_DASK.md)** - Complete setup guide
-- **[Infrastructure Index](infrastructure/INFRASTRUCTURE_DOCS_INDEX.md)** - All infrastructure resources
+2. **[Install](guides/INSTALL.md)** - 10 min
+   - System requirements
+   - Step-by-step setup
+   - Configuration details
 
-### Phase 1a - Pricing Parallelization (COMPLETE ✅)
-- **[Dask Parallelization](infrastructure/DASK_PARALLELIZATION.md)** - Architecture overview
-- **[Implementation Summary](infrastructure/DASK_IMPLEMENTATION_SUMMARY.md)** - Phase 1a details
-- **[Quick Reference](infrastructure/DASK_QUICK_REFERENCE.md)** - Commands and examples
-- **[Completion Checklist](infrastructure/DASK_COMPLETION_CHECKLIST.md)** - Verification
-- **[File Manifest](infrastructure/DASK_FILE_MANIFEST.md)** - All files involved
+3. **[Usage Guide](guides/USAGE.md)** - 15 min
+   - Core workflows
+   - Component usage
+   - Code examples
 
-### Phase 1b - Technical/News/Pricing Analysis (COMPLETE ✅)
-- **[Phase 1 Expansion](phase1/PHASE1_EXPANSION_COMPLETE.md)** - ⭐ **START HERE**
-- **[Quick Reference](phase1/PHASE1_EXPANSION.md)** - Commands and flows
-- **[Implementation Summary](phase1/PHASE1_EXPANSION_SUMMARY.md)** - What was built
-- **[Verification Checklist](phase1/PHASE1_EXPANSION_CHECKLIST.md)** - Completeness check
-- **[Setup Instructions](phase1/PHASE1_DASK_LOCAL_SETUP.md)** - Local cluster setup
-- **[Legacy Checklist](phase1/PHASE1_CHECKLIST.md)** - Original checklist
+### Understanding the System (45 min)
+1. **[Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)** - 20 min
+   - System components
+   - Data flow diagrams
+   - Technology stack
+   - Scaling strategy
 
-### Setup Resources
-- **[Copy-Paste Commands](infrastructure/COPYPASTE_PHASE1.md)** - Ready-to-run setup
+2. **[Backtesting Architecture](architecture/BACKTESTING_ENGINE_ARCHITECTURE.md)** - 15 min
+   - Engine design
+   - Performance optimization
+   - Backtesting framework
 
-## 📖 Common Tasks
+3. **[DASK Best Practices](architecture/DASK_BEST_PRACTICES.md)** - 10 min
+   - Parallelization patterns
+   - Performance tuning
+   - Common pitfalls
 
-| Task | Reference |
-|------|-----------|
-| Run portfolio analytics | [Usage: Portfolio Analytics](USAGE.md#1-portfolio-analytics--email-report) |
-| Fetch financial data | [Usage: Financial Data](USAGE.md#2-fetch-financial-data) |
-| Access price data | [API: PriceFetcher](API.md#pricefetcher) |
-| Query SEC filings | [API: XBRL Functions](API.md#helper-functions) |
-| Deploy to AWS | [Deploy: AWS ECS](DEPLOY.md#aws-ecs) |
-| Run tests | [Testing: Quick Test](TESTING.md#quick-test) |
-| Run parallel analysis | [Phase 1: Quick Start](phase1/PHASE1_EXPANSION_COMPLETE.md#-quick-start-30-seconds) |
-| Check Dask status | [Infrastructure: Quick Reference](infrastructure/DASK_QUICK_REFERENCE.md#cluster-status-check) |
+### Using the Dashboard (35 min)
+1. **[Dashboard Guide](guides/DASHBOARD_GUIDE.md)** - 20 min
+   - Tab-by-tab walkthrough
+   - Features and metrics
+   - Interpretation guide
 
-## File Structure
+2. **[Advanced Analytics](guides/ADVANCED_ANALYTICS.md)** - 15 min
+   - Risk metrics (VaR, beta, HHI)
+   - Portfolio optimization
+   - Trading signals
 
-```
-TechStack/
-├── src/                          # Source code
-│   ├── analytics_flows.py        # Portfolio analytics
-│   ├── portfolio_flows.py        # Data aggregation
-│   ├── portfolio_analytics.py    # P&L & metrics
-│   ├── portfolio_holdings.py     # Position management
-│   ├── portfolio_prices.py       # Price fetching
-│   ├── portfolio_technical.py    # Technical indicators
-│   ├── portfolio_fundamentals.py # Fundamental metrics
-│   ├── xbrl.py                   # SEC XBRL parsing
-│   ├── fx_rates.py               # Currency conversion
-│   ├── parquet_db.py             # Data storage
-│   ├── cache.py                  # Caching layer
-│   └── config.py                 # Config management
-│
-├── tests/                        # Test suite
-│
-├── db/                           # Data storage (Parquet files)
-│
-├── config.csv                    # Configuration (user edits)
-├── config.csv.template           # Config template
-├── holdings.csv                  # Portfolio positions
-├── pyproject.toml                # Python project config
-└── README.md                     # Start here
-```
+### Integration & Workflows (30 min)
+1. **[Prefect Integration](integration/PREFECT_INTEGRATION_INDEX.md)** - 15 min
+   - Prefect setup
+   - Flow overview
+   - Deployment options
 
-## Environment Setup
+2. **[Prefect Quick Reference](integration/PREFECT_QUICK_REFERENCE.md)** - 10 min
+   - Common commands
+   - Debugging tips
+   - Troubleshooting
 
-**Requirements:**
-- Python 3.13+
-- `uv` package manager
+3. **[News Analysis](integration/NEWS_ANALYSIS.md)** - 5 min
+   - Sentiment scoring
+   - Impact assessment
+   - Usage examples
 
-**Installation:**
-```bash
-git clone <repo>
-cd TechStack
-uv sync
-cp config.csv.template config.csv
-# Edit config.csv with your API keys and email settings
-```
+### Technical Reference (60 min)
+1. **[API Reference](reference/API.md)** - 30 min
+   - Module overview
+   - Class documentation
+   - Function signatures
+   - Usage examples
 
-## Main Workflows
+2. **[Backtesting Guide](architecture/BACKTESTING_FRAMEWORK_GUIDE.md)** - 15 min
+   - Framework setup
+   - Running simulations
+   - Performance metrics
 
-| Workflow | Purpose | Command |
-|----------|---------|---------|
-| Enhanced Analytics | Portfolio P&L, signals, email | `python -c "from src.analytics_flows import enhanced_analytics_flow; enhanced_analytics_flow(send_email_report=True)"` |
-| Data Aggregation | Fetch prices, SEC, fundamentals | `portfolio_flows.aggregate_financial_data_flow()` |
-| Portfolio Analysis | Technical analysis, metrics | `portfolio_flows.portfolio_analysis_flow()` |
+3. **[Dask Backfill](architecture/DASK_BACKFILL_DOCUMENTATION.md)** - 10 min
+   - Gap detection
+   - Holiday handling
+   - Performance tips
 
-## Key Concepts
+4. **[ParquetDB Integration](architecture/PARQUETDB_INTEGRATION.md)** - 5 min
+   - Data storage
+   - Query patterns
+   - Optimization
 
-- **Parquet DB**: All data stored in Apache Parquet format with Snappy compression
-- **Prefect Workflows**: Task orchestration with automatic retries and monitoring
-- **Caching**: In-memory cache with configurable TTL to reduce API calls
-- **Multi-broker Support**: DEGIRO, REVOLUT, Kraken position tracking
-- **Email Reports**: HTML-formatted reports sent via SMTP
+### Operations & Deployment (40 min)
+1. **[Testing Guide](reference/TESTING.md)** - 15 min
+   - Running tests
+   - Coverage reporting
+   - Test organization
 
-## Configuration
+2. **[Deployment Guide](reference/DEPLOY.md)** - 20 min
+   - AWS ECS setup
+   - Kubernetes deployment
+   - Docker configuration
+   - CI/CD pipeline
 
-Edit `config.csv` to set:
-- Email delivery (SMTP settings)
-- API keys (Alpha Vantage, etc.)
-- Application preferences
+3. **[Troubleshooting](reference/VWRL_FAILURE_ANALYSIS.md)** - 5 min
+   - Common issues
+   - Solutions
+   - Debug tips
 
-See [Installation](INSTALL.md#configuration) for detailed setup.
+### Development & Roadmap (30 min)
+1. **[Future Work](FUTURE_WORK.md)** - 30 min
+   - Completed phases
+   - Planned features
+   - Development timeline
+   - Architecture considerations
 
-## Troubleshooting
+---
 
-| Problem | Solution |
-|---------|----------|
-| Import errors | Run `uv sync` again |
-| Email not sending | Check Gmail app password settings |
-| API rate limits | Enable caching or use `force_refresh=False` |
-| Parquet read errors | Clear cache: `rm -rf db/__pycache__` |
+## 🔍 Search by Topic
 
-See individual documentation files for more detailed troubleshooting.
+### Data & Storage
+- [ParquetDB Integration](architecture/PARQUETDB_INTEGRATION.md)
+- [Dask Backfill Documentation](architecture/DASK_BACKFILL_DOCUMENTATION.md)
+- [API Reference - Database](reference/API.md#parquetdb)
 
-## Quick Commands
+### Performance & Optimization
+- [DASK Best Practices](architecture/DASK_BEST_PRACTICES.md)
+- [Backtesting Architecture](architecture/BACKTESTING_ENGINE_ARCHITECTURE.md)
+- [Architecture Overview - Scaling](architecture/ARCHITECTURE_OVERVIEW.md#scaling-architecture)
 
-```bash
-# Run everything
-uv run pytest tests/ -v && uv run python -c "from src.analytics_flows import enhanced_analytics_flow; enhanced_analytics_flow(send_email_report=True)"
+### Workflows & Orchestration
+- [Prefect Integration](integration/PREFECT_INTEGRATION_INDEX.md)
+- [Prefect Quick Reference](integration/PREFECT_QUICK_REFERENCE.md)
+- [Usage Guide - Workflows](guides/USAGE.md#core-workflows)
 
-# Format code
-uv run black src/ tests/ && uv run ruff check --fix src/ tests/
+### Analytics & Signals
+- [Advanced Analytics](guides/ADVANCED_ANALYTICS.md)
+- [Quick Wins Integration](integration/QUICK_WINS_INTEGRATION.md)
+- [News Analysis](integration/NEWS_ANALYSIS.md)
 
-# Type checking
-uv run mypy src/
+### Deployment & DevOps
+- [Deploy Guide](reference/DEPLOY.md)
+- [Testing Guide](reference/TESTING.md)
+- [Architecture Overview - Deployment](architecture/ARCHITECTURE_OVERVIEW.md#deployment-options)
 
-# Monitor workflows
-uv run prefect server start
-# Visit http://localhost:4200
-```
+---
 
-## Need Help?
+## 📋 Documentation Statistics
 
-1. Check the relevant documentation file above
-2. See [Testing Guide](TESTING.md) to verify installation works
-3. Run with verbose logging: `uv run pytest -vv`
-4. Review inline code comments in `src/` files
+| Category | Files | Focus |
+|----------|-------|-------|
+| **Root** | 2 | Overview, roadmap |
+| **Architecture** | 6 | System design, performance |
+| **Guides** | 5 | User tutorials, setup |
+| **Integration** | 5 | Workflows, external systems |
+| **Reference** | 4 | API, deployment, troubleshooting |
+| **Total** | **22** | Lean, focused docs |
+
+---
+
+## 🎯 Reading Paths
+
+### Path 1: Quick User (30 min)
+1. Quick Start
+2. Dashboard Guide
+3. Usage Guide
+
+### Path 2: Developer (2 hours)
+1. Architecture Overview
+2. API Reference
+3. Backtesting Guide
+4. Testing Guide
+5. Deployment Guide
+
+### Path 3: System Administrator (1 hour)
+1. Architecture Overview
+2. Deployment Guide
+3. Testing Guide
+4. Prefect Integration
+
+### Path 4: Data Engineer (1.5 hours)
+1. Architecture Overview
+2. Dask Best Practices
+3. ParquetDB Integration
+4. Dask Backfill Documentation
+5. API Reference
+
+### Path 5: Analyst (45 min)
+1. Dashboard Guide
+2. Advanced Analytics
+3. News Analysis
+4. Quick Wins Integration
+
+---
+
+## 💡 Tips for Success
+
+1. **Start with Quick Start** (5 min) - Get running fast
+2. **Read Architecture** (20 min) - Understand system
+3. **Try the Dashboard** (15 min) - Explore UI
+4. **Review API** (30 min) - Understand components
+5. **Check Troubleshooting** (10 min) - Solve issues
+
+---
+
+## 📞 Need Help?
+
+| Issue | Reference |
+|-------|-----------|
+| Can't install | [Install Guide](guides/INSTALL.md) |
+| Dashboard not working | [Dashboard Guide](guides/DASHBOARD_GUIDE.md) |
+| API errors | [API Reference](reference/API.md) |
+| Tests failing | [Testing Guide](reference/TESTING.md) |
+| Performance issues | [DASK Best Practices](architecture/DASK_BEST_PRACTICES.md) |
+| Deployment help | [Deployment Guide](reference/DEPLOY.md) |
+| Something broken | [Troubleshooting](reference/VWRL_FAILURE_ANALYSIS.md) |
+
+---
+
+## 📊 Documentation Quality
+
+✅ **Complete** - All major features documented  
+✅ **Organized** - 4 categories + index  
+✅ **Concise** - Removed 43 → 22 docs (49% reduction)  
+✅ **Navigable** - Multiple search paths  
+✅ **Updated** - Latest functionality included  
+✅ **Practical** - Code examples throughout  
+
+---
+
+## 🚀 Next Steps
+
+1. **Start Here** → [Quick Start](guides/QUICK_START.md)
+2. **Understand System** → [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
+3. **Explore Features** → [Dashboard Guide](guides/DASHBOARD_GUIDE.md)
+4. **Go Deeper** → [API Reference](reference/API.md)
+5. **Deploy** → [Deployment Guide](reference/DEPLOY.md)
+
+**Last Updated:** December 8, 2025
